@@ -208,6 +208,7 @@ describe("HotPotato", () => {
     it("allows second player to join");
     it("does not allow first crank until after staging period", async () => {});
     it("changes status to active on first crank", async () => {});
+    // TODO(techiejd): Allow for affiliate links.
     it("sends SOL to first and second player after first crank", async () => {});
     it("allows third player to join", async () => {});
     it("sends SOL to first, second and third player in second crank", async () => {});
