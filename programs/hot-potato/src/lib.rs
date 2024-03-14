@@ -6,6 +6,9 @@ use anchor_lang::error_code;
 #[error_code]
 pub enum HotPotatoError {
     NotGameMaster,
+    CannotCrankWhilePending,
+    GameMasterCannotPlay,
+    InsufficientFunds,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
@@ -39,6 +42,7 @@ pub struct Game {
     pub state: GameState,           // 1 byte
     pub staging_period_length: u64, // 8 bytes
     pub turn_period_length: u64,    // 8 bytes
+    pub minimum_ticket_entry: u64,  // 8 bytes
 }
 
 // This is your program's public key and it will update
@@ -52,6 +56,7 @@ mod hot_potato {
         ctx: Context<InitializeGame>,
         staging_period_length: u64,
         turn_period_length: u64,
+        minimum_ticket_entry: u64,
     ) -> Result<()> {
         *ctx.accounts.new_game = Game {
             game_master: *ctx.accounts.game_master.key,
@@ -59,6 +64,7 @@ mod hot_potato {
             state: GameState::Pending,
             staging_period_length,
             turn_period_length,
+            minimum_ticket_entry,
         };
         msg!("Game initialized and is now pending");
         Ok(())
@@ -73,14 +79,34 @@ mod hot_potato {
             HotPotatoError::NotGameMaster
         );
 
-        //game.crank(&tile)
+        require!(
+            game.state != GameState::Pending,
+            HotPotatoError::CannotCrankWhilePending
+        );
+
+        //game.crank();
+        Ok(())
+    }
+
+    pub fn request_hot_potato(ctx: Context<RequestHotPotato>, ticket_entry: u64) -> Result<()> {
+        let game = &mut ctx.accounts.game;
+        require_keys_neq!(
+            game.game_master,
+            ctx.accounts.player.key(),
+            HotPotatoError::GameMasterCannotPlay
+        );
+        require_gt!(
+            ticket_entry,
+            game.minimum_ticket_entry,
+            HotPotatoError::InsufficientFunds
+        );
         Ok(())
     }
 }
 
 #[derive(Accounts)]
 pub struct InitializeGame<'info> {
-    #[account(init, seeds=[game_master.key().as_ref()], bump, payer = game_master, space = 8 + 74)]
+    #[account(init, seeds=[game_master.key().as_ref()], bump, payer = game_master, space = 8 + 82)]
     pub new_game: Account<'info, Game>,
     #[account(mut)]
     pub game_master: Signer<'info>,
@@ -93,6 +119,14 @@ pub struct Crank<'info> {
     pub game: Account<'info, Game>,
     #[account(signer)]
     pub game_master: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct RequestHotPotato<'info> {
+    #[account(mut)]
+    pub game: Account<'info, Game>,
+    #[account(signer)]
+    pub player: Signer<'info>,
 }
 
 /*
