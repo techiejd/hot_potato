@@ -12,6 +12,8 @@ pub enum HotPotatoError {
     CannotCrankWhilePending,
     GameMasterCannotPlay,
     BelowTicketEntryMinimum,
+    BoardMismatch,
+    CrankNotAllowedBeforeStagingEnds,
     GameBoardFull,
 }
 
@@ -56,15 +58,17 @@ pub struct Board {
 }
 
 impl Board {
-    fn next_end(&self) -> u64 {
+    fn next_tail(&self) -> u64 {
         (self.tail + 1) % constants::NONUNIQUE_POTATO_HOLDERS_MAX
     }
     pub fn push(&mut self, potato_holding_information: PotatoHoldingInformation) -> Result<()> {
         // This function adds a potato holding information to the end of the board in a round-robin fashion
-        let next_end = self.next_end();
-        require_neq!(next_end, self.head, HotPotatoError::GameBoardFull);
+        msg!("Starting state: head: {}, tail: {}", self.head, self.tail);
+        let next_tail = self.next_tail();
+        require_neq!(next_tail, self.head, HotPotatoError::GameBoardFull);
         self.potato_holders[self.tail as usize] = potato_holding_information;
-        self.tail = next_end;
+        self.tail = next_tail;
+        msg!("Ending state: head: {}, tail: {}", self.head, self.tail);
         Ok(())
     }
 }
@@ -86,8 +90,8 @@ impl Game {
         &mut self,
         player: &Pubkey,
         ticket_entry: u64,
-        charge_ticket_entry: F0,
-        push_potato_holding_information: F1,
+        charge_ticket_entry: Box<F0>,
+        push_potato_holding_information: Box<F1>,
     ) -> Result<()>
     where
         F0: FnOnce() -> Result<()>,
@@ -114,9 +118,31 @@ impl Game {
                 };
                 msg!("Game is now in staging mode");
             }
-            _ => {}
+            _ => {
+                give_player_hot_potato()?;
+            }
         }
 
+        Ok(())
+    }
+    pub fn crank(&mut self) -> Result<()> {
+        require!(
+            self.state != GameState::Pending,
+            HotPotatoError::CannotCrankWhilePending
+        );
+        match self.state {
+            GameState::Staging { ending } => {
+                require!(
+                    Clock::get()
+                        .expect("No system clock time")
+                        .unix_timestamp
+                        .ge(&ending),
+                    HotPotatoError::CrankNotAllowedBeforeStagingEnds
+                );
+                self.state = GameState::Pending;
+            }
+            _ => {}
+        }
         Ok(())
     }
 }
@@ -150,19 +176,13 @@ mod hot_potato {
 
     pub fn crank(ctx: Context<Crank>) -> Result<()> {
         let game = &mut ctx.accounts.game;
-
         require_keys_eq!(
             game.game_master,
             ctx.accounts.game_master.key(),
             HotPotatoError::NotGameMaster
         );
 
-        require!(
-            game.state != GameState::Pending,
-            HotPotatoError::CannotCrankWhilePending
-        );
-
-        //game.crank();
+        game.crank()?;
         Ok(())
     }
 
@@ -175,11 +195,6 @@ mod hot_potato {
             game.game_master,
             player.key(),
             HotPotatoError::GameMasterCannotPlay
-        );
-        require_keys_eq!(
-            board.owning_game_key,
-            game_account_info.key(),
-            HotPotatoError::NotGameMaster
         );
         require_gte!(
             ticket_entry,
@@ -205,8 +220,8 @@ mod hot_potato {
         game.request_hot_potato(
             &player.key(),
             actual_ticket_entry,
-            charge_ticket_entry,
-            push_potato_holding_information,
+            Box::new(charge_ticket_entry),
+            Box::new(push_potato_holding_information),
         )
     }
 }
@@ -224,15 +239,23 @@ pub struct InitializeGame<'info> {
 
 #[derive(Accounts)]
 pub struct Crank<'info> {
-    #[account(mut)]
+    #[account(mut,
+        constraint = 
+        game.board == board.to_account_info().key()
+        @ HotPotatoError::BoardMismatch)]
     pub game: Account<'info, Game>,
+    #[account(mut)]
+    pub board: AccountLoader<'info, Board>,
     #[account(signer)]
     pub game_master: Signer<'info>,
 }
 
 #[derive(Accounts)]
 pub struct RequestHotPotato<'info> {
-    #[account(mut)]
+    #[account(mut,
+        constraint = 
+        game.board == board.to_account_info().key()
+        @ HotPotatoError::BoardMismatch)]
     pub game: Account<'info, Game>,
     #[account(mut)]
     pub board: AccountLoader<'info, Board>,
