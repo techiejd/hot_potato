@@ -349,6 +349,21 @@ describe("HotPotato", () => {
         program.programId
       );
 
+      const expectOnEvent = (e: unknown) => {
+        expect(e)
+          .to.have.property("gameMaster")
+          .and.to.eql(gameMasterAccountKp.publicKey);
+        expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+        expect(e)
+          .to.have.property("board")
+          .and.to.eql(boardAccountKp.publicKey);
+      };
+      const eventListenerSpy = chai.spy(expectOnEvent);
+      const gameInitializedListener = program.addEventListener(
+        "GameInitialized",
+        eventListenerSpy
+      );
+
       const txHash = await program.methods
         .initialize(oneDay, oneHour, minimumTicketEntry)
         .accounts({
@@ -367,24 +382,9 @@ describe("HotPotato", () => {
         .then((txHash) => txHash);
       await confirmTx(txHash);
 
-      const expectOnEvent = (e: unknown) => {
-        expect(e)
-          .to.have.property("gameMaster")
-          .and.to.eql(gameMasterAccountKp.publicKey);
-        expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
-        expect(e)
-          .to.have.property("board")
-          .and.to.eql(boardAccountKp.publicKey);
-      };
-      const eventListenerSpy = chai.spy(expectOnEvent);
-      const gameInitializedListener = program.addEventListener(
-        "GameInitialized",
-        eventListenerSpy
-      );
-      await initLongGame();
       // This line is only for test purposes to ensure the event
       // listener has time to listen to event.
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 5000));
       program.removeEventListener(gameInitializedListener);
       expect(eventListenerSpy).to.have.been.called();
     });
@@ -555,23 +555,8 @@ describe("HotPotato", () => {
       it("emits status change event to staging", async () => {
         const { gameAccountPublicKey, boardAccountPublicKey } =
           await initLongGame();
-        const firstPlayerAccountKp = new web3.Keypair();
-        const { refetchedGameAccount } = await doPlayerRequestHotPotato(
-          gameAccountPublicKey,
-          boardAccountPublicKey,
-          firstPlayerAccountKp
-        );
         let stagingEndingTime: anchor.BN;
         const expectOnEvent = (e: unknown) => {
-          // Ok so this is actually being triggered
-          // every time the game state changes value
-          // while this event listener is alive during the test.
-          // Much like real life, we should filter for this game key.
-          expect(e).to.have.property("game");
-          if (e["game"] != gameAccountPublicKey) {
-            return;
-          }
-          console.log(e);
           expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
           expect(e)
             .to.have.property("state")
@@ -584,9 +569,14 @@ describe("HotPotato", () => {
           "GameStateChanged",
           eventListenerSpy
         );
-        await initLongGame();
-        // This line is only for test purposes to ensure the event
-        // listener has time to listen to event.
+        const firstPlayerAccountKp = new web3.Keypair();
+
+        const { refetchedGameAccount } = await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
+        );
+
         await new Promise((resolve) => setTimeout(resolve, 2000));
         program.removeEventListener(gameInitializedListener);
         expect(eventListenerSpy).to.have.been.called();
@@ -626,30 +616,37 @@ describe("HotPotato", () => {
           firstPlayerStartingBalance - amountWithoutChumpChange
         );
       });
-      it("logs player joining and amount", async () => {
+      it("emits PotatoReceived Event", async () => {
         const { gameAccountPublicKey, boardAccountPublicKey } =
           await initLongGame();
         const firstPlayerAccountKp = new web3.Keypair();
 
-        const { playerRequestsHotPotatoTxHash: firstPlayerJoinsTxHash } =
-          await doPlayerRequestHotPotato(
-            gameAccountPublicKey,
-            boardAccountPublicKey,
-            firstPlayerAccountKp
-          );
-
-        const txDetails = await program.provider.connection.getTransaction(
-          firstPlayerJoinsTxHash,
-          {
-            maxSupportedTransactionVersion: 0,
-            commitment: "confirmed",
-          }
+        const expectOnEvent = (e: unknown) => {
+          expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+          expect(e)
+            .to.have.property("player")
+            .and.to.eql(firstPlayerAccountKp.publicKey);
+          const r = expect(e)
+            .to.have.property("ticketEntryAmount")
+            .and.to.be.a.bignumber.that.is.eq(
+              new anchor.BN(amountWithoutChumpChange)
+            );
+        };
+        const eventListenerSpy = chai.spy(expectOnEvent);
+        const gameInitializedListener = program.addEventListener(
+          "PotatoReceived",
+          eventListenerSpy
         );
-        const logs = txDetails?.meta?.logMessages;
 
-        expect(logs.join("\n")).to.include(
-          `Player ${firstPlayerAccountKp.publicKey.toString()} joined with ${amountWithoutChumpChange}`
+        await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
         );
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        program.removeEventListener(gameInitializedListener);
+        expect(eventListenerSpy).to.have.been.called();
       });
       it("fills hotPotatoHolders with player's turn information once", async () => {
         const { gameAccountPublicKey, boardAccountPublicKey } =

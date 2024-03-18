@@ -19,6 +19,13 @@ pub struct GameStateChanged {
     pub state: GameState,
 }
 
+#[event]
+pub struct PotatoReceived {
+    pub game: Pubkey,
+    pub player: Pubkey,
+    pub ticket_entry_amount: u64,
+}
+
 
 #[error_code]
 pub enum HotPotatoError {
@@ -127,7 +134,11 @@ impl Game {
                 turn_number: 0,
                 turn_amount: ticket_entry / constants::NUM_TURNS,
             })?;
-            msg!("Player {} joined with {}", player, ticket_entry);
+            emit!(PotatoReceived {
+                game: *for_game,
+                player: *player,
+                ticket_entry_amount: ticket_entry,
+            });
             Ok(())
         };
         match self.state {
