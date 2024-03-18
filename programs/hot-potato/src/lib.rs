@@ -14,7 +14,7 @@ pub enum HotPotatoError {
     BelowTicketEntryMinimum,
     BoardMismatch,
     CrankNotAllowedBeforeStagingEnds,
-    GameBoardFull,
+    BoardFull,
 }
 
 mod constants {
@@ -51,6 +51,7 @@ pub struct PotatoHoldingInformation {
 #[account(zero_copy)]
 #[repr(C)]
 pub struct Board {
+    full: u64,                                         // 8 bytes
     head: u64,                                          // 8 bytes
     tail: u64,                                          // 8 bytes
     pub owning_game_key: Pubkey,                        // 32 bytes
@@ -63,12 +64,12 @@ impl Board {
     }
     pub fn push(&mut self, potato_holding_information: PotatoHoldingInformation) -> Result<()> {
         // This function adds a potato holding information to the end of the board in a round-robin fashion
-        msg!("Starting state: head: {}, tail: {}", self.head, self.tail);
-        let next_tail = self.next_tail();
-        require_neq!(next_tail, self.head, HotPotatoError::GameBoardFull);
+        require_neq!(self.full, 1, HotPotatoError::BoardFull);
         self.potato_holders[self.tail as usize] = potato_holding_information;
-        self.tail = next_tail;
-        msg!("Ending state: head: {}, tail: {}", self.head, self.tail);
+        self.tail = self.next_tail();
+        if self.tail == self.head {
+            self.full = 1;
+        }
         Ok(())
     }
 }
@@ -228,12 +229,13 @@ mod hot_potato {
 
 #[derive(Accounts)]
 pub struct InitializeGame<'info> {
-    #[account(init, seeds=[game_master.key().as_ref()], bump, payer = game_master, space = 8 + Game::SIZE)]
+    #[account(init, seeds=[new_board.key().as_ref(), game_master.key().as_ref()], bump, payer = game_master, space = 8 + Game::SIZE)]
     pub new_game: Account<'info, Game>,
-    #[account(zero)]
+    #[account(zero, constraint = new_board.to_account_info().key() == board_as_signer.to_account_info().key())]
     pub new_board: AccountLoader<'info, Board>,
     #[account(mut)]
     pub game_master: Signer<'info>,
+    pub board_as_signer: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 

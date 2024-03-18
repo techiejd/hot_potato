@@ -89,7 +89,10 @@ describe("HotPotato", () => {
     const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
 
     const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
-      [gameMasterAccountKp.publicKey.toBuffer()],
+      [
+        boardAccountKp.publicKey.toBuffer(),
+        gameMasterAccountKp.publicKey.toBuffer(),
+      ],
       program.programId
     );
 
@@ -99,9 +102,10 @@ describe("HotPotato", () => {
         newGame: gameAccountPublicKey,
         newBoard: boardAccountKp.publicKey,
         gameMaster: gameMasterAccountKp.publicKey,
+        boardAsSigner: boardAccountKp.publicKey,
         systemProgram: web3.SystemProgram.programId,
       })
-      .signers([gameMasterAccountKp])
+      .signers([gameMasterAccountKp, boardAccountKp])
       .rpc()
       .catch((e) => {
         console.log(anchor.translateError(e, new Map()));
@@ -166,30 +170,126 @@ describe("HotPotato", () => {
     };
   };
 
-  it("fails initializing if gameMaster is not signer", async () => {
-    const gameMasterAccountKp = new web3.Keypair();
-    await airdrop(gameMasterAccountKp.publicKey);
-    const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
-    const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
-      [gameMasterAccountKp.publicKey.toBuffer()],
-      program.programId
-    );
-    const someOtherAccountKp = new web3.Keypair();
-    await expect(
-      program.methods
-        .initialize(oneDay, oneHour, minimumTicketEntry)
-        .accounts({
-          newGame: gameAccountPublicKey,
-          newBoard: boardAccountKp.publicKey,
-          gameMaster: gameMasterAccountKp.publicKey,
-          systemProgram: web3.SystemProgram.programId,
-        })
-        .signers([someOtherAccountKp])
-        .rpc()
-    ).to.be.rejectedWith(
-      Error,
-      `unknown signer: ${someOtherAccountKp.publicKey.toString()}`
-    );
+  describe("Fails initializing", async () => {
+    it("fails initializing if seed doesn't include only gameMaster and board", async () => {
+      const gameMasterAccountKp = new web3.Keypair();
+      await airdrop(gameMasterAccountKp.publicKey);
+      const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
+      const restOfAccounts = {
+        newBoard: boardAccountKp.publicKey,
+        gameMaster: gameMasterAccountKp.publicKey,
+        boardAsSigner: boardAccountKp.publicKey,
+        systemProgram: web3.SystemProgram.programId,
+      };
+      const [failingGameAccountPublicKey0] =
+        web3.PublicKey.findProgramAddressSync([], program.programId);
+      const [failingGameAccountPublicKey1] =
+        web3.PublicKey.findProgramAddressSync(
+          [boardAccountKp.publicKey.toBuffer()],
+          program.programId
+        );
+      const [failingGameAccountPublicKey2] =
+        web3.PublicKey.findProgramAddressSync(
+          [gameMasterAccountKp.publicKey.toBuffer()],
+          program.programId
+        );
+      const [failingGameAccountPublicKey3] =
+        web3.PublicKey.findProgramAddressSync(
+          [
+            gameMasterAccountKp.publicKey.toBuffer(),
+            boardAccountKp.publicKey.toBuffer(),
+          ],
+          program.programId
+        );
+      const someOtherAccountKp = new web3.Keypair();
+      const [failingGameAccountPublicKey4] =
+        web3.PublicKey.findProgramAddressSync(
+          [
+            boardAccountKp.publicKey.toBuffer(),
+            gameMasterAccountKp.publicKey.toBuffer(),
+            someOtherAccountKp.publicKey.toBuffer(),
+          ],
+          program.programId
+        );
+      await expect(
+        program.methods
+          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .accounts({
+            newGame: failingGameAccountPublicKey0,
+            ...restOfAccounts,
+          })
+          .signers([gameMasterAccountKp, boardAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(Error, "ConstraintSeeds");
+      await expect(
+        program.methods
+          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .accounts({
+            newGame: failingGameAccountPublicKey1,
+            ...restOfAccounts,
+          })
+          .signers([gameMasterAccountKp, boardAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(Error, "ConstraintSeeds");
+      await expect(
+        program.methods
+          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .accounts({
+            newGame: failingGameAccountPublicKey2,
+            ...restOfAccounts,
+          })
+          .signers([gameMasterAccountKp, boardAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(Error, "ConstraintSeeds");
+      await expect(
+        program.methods
+          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .accounts({
+            newGame: failingGameAccountPublicKey3,
+            ...restOfAccounts,
+          })
+          .signers([gameMasterAccountKp, boardAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(Error, "ConstraintSeeds");
+      await expect(
+        program.methods
+          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .accounts({
+            newGame: failingGameAccountPublicKey4,
+            ...restOfAccounts,
+          })
+          .signers([gameMasterAccountKp, boardAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(Error, "ConstraintSeeds");
+    });
+    it("fails initializing if gameMaster and board are not the (only) signers", async () => {
+      const gameMasterAccountKp = new web3.Keypair();
+      await airdrop(gameMasterAccountKp.publicKey);
+      const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
+      const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
+        [
+          boardAccountKp.publicKey.toBuffer(),
+          gameMasterAccountKp.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+      const someOtherAccountKp = new web3.Keypair();
+      await expect(
+        program.methods
+          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .accounts({
+            newGame: gameAccountPublicKey,
+            newBoard: boardAccountKp.publicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+            systemProgram: web3.SystemProgram.programId,
+          })
+          .signers([someOtherAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(
+        Error,
+        `unknown signer: ${someOtherAccountKp.publicKey.toString()}`
+      );
+    });
   });
 
   describe("Initializing", async () => {
@@ -245,6 +345,20 @@ describe("HotPotato", () => {
   });
 
   describe("Playing", async () => {
+    const amountWithoutChumpChange =
+      minimumTicketEntry.toNumber() -
+      (minimumTicketEntry.toNumber() % NumTurns);
+    const expectInitializedBoardSlot = (
+      holder: PotatoHolder,
+      player: web3.PublicKey
+    ) => {
+      const initializedBoardSlot = {
+        player,
+        turnNumber: bigNumZero,
+        turnAmount: new anchor.BN(amountWithoutChumpChange / NumTurns),
+      };
+      expectBoardSlotToMatch(holder, initializedBoardSlot);
+    };
     describe("Prohibited actions", async () => {
       let gameMasterAccountKp: web3.Keypair;
       let gameAccountPublicKey: web3.PublicKey;
@@ -371,21 +485,6 @@ describe("HotPotato", () => {
       });
     });
     describe("First player requests hot potato", async () => {
-      const amountWithoutChumpChange =
-        minimumTicketEntry.toNumber() -
-        (minimumTicketEntry.toNumber() % NumTurns);
-      const expectInitializedBoardSlot = (
-        holder: PotatoHolder,
-        player: web3.PublicKey
-      ) => {
-        const initializedBoardSlot = {
-          player,
-          turnNumber: bigNumZero,
-          turnAmount: new anchor.BN(amountWithoutChumpChange / NumTurns),
-        };
-        expectBoardSlotToMatch(holder, initializedBoardSlot);
-      };
-
       it("changes status to staging with starting time when first player joins", async () => {
         const { gameAccountPublicKey, boardAccountPublicKey } =
           await initLongGame();
@@ -516,20 +615,16 @@ describe("HotPotato", () => {
         const { gameAccountPublicKey, boardAccountPublicKey } =
           await initLongGame();
         const firstPlayerAccountKp = new web3.Keypair();
-        const {
-          playerRequestsHotPotatoTxConfirmation:
-            playerRequestsHotPotatoTxConfirmation0,
-        } = await doPlayerRequestHotPotato(
+        await doPlayerRequestHotPotato(
           gameAccountPublicKey,
           boardAccountPublicKey,
           firstPlayerAccountKp
         );
-        const { refetchedboardAccount, playerRequestsHotPotatoTxConfirmation } =
-          await doPlayerRequestHotPotato(
-            gameAccountPublicKey,
-            boardAccountPublicKey,
-            firstPlayerAccountKp
-          );
+        const { refetchedboardAccount } = await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
+        );
 
         const firstPlayerSlot0 = refetchedboardAccount.potatoHolders[0];
         expectInitializedBoardSlot(
@@ -580,14 +675,77 @@ describe("HotPotato", () => {
         );
       });
     });
-    it("changes status to active on first crank");
-    it("allows second player to join");
-    // TODO(techiejd): Allow for affiliate links.
-    it("sends SOL to first and second player after first crank");
-    it("allows third player to join");
-    it("sends SOL to first, second and third player in second crank");
-    it("allows for up to 10_000 players to join");
-    it("allows for game master to take out the game master money");
+    /*it("allows for up to 10_000 players to join", async () => {
+      const { gameAccountPublicKey, boardAccountPublicKey } =
+        await initLongGame();
+      const playerAccountKps = Array.from({ length: 10_000 }, () => {
+        return new web3.Keypair();
+      });
+      // Break up the players into chunks of 100 to avoid hitting tx or heap limits
+      const chunkSize = 100;
+      const chunkedPlayerAccountKps = playerAccountKps.reduce((acc, _, i) => {
+        const index = Math.floor(i / chunkSize);
+        if (!acc[index]) {
+          acc[index] = [];
+        }
+        acc[index].push(playerAccountKps[i]);
+        return acc;
+      }, [] as web3.Keypair[][]);
+      let counter = 0;
+      for (const chunk of chunkedPlayerAccountKps) {
+        await Promise.all(
+          chunk.map((playerAccountKp) =>
+            doPlayerRequestHotPotato(
+              gameAccountPublicKey,
+              boardAccountPublicKey,
+              playerAccountKp
+            )
+          )
+        );
+        console.log(
+          `Chunk ${counter + 1} of ${chunkedPlayerAccountKps.length}`
+        );
+        counter++;
+      }
+      console.log("All players joined");
+      const refetchedboardAccount = await program.account.board.fetch(
+        boardAccountPublicKey
+      );
+      console.log("board refetched");
+      expect(
+        playerAccountKps.every((playerAccountKp) => {
+          const playerSlot = refetchedboardAccount.potatoHolders.find(
+            (holder) => holder.player.equals(playerAccountKp.publicKey)
+          );
+          expect(playerSlot).to.not.be.undefined;
+          expectInitializedBoardSlot(playerSlot, playerAccountKp.publicKey);
+          return true;
+        })
+      ).to.be.true;
+      console.log("All players slots checked");
+
+      const overTenThousandthPlayerAccountKp = new web3.Keypair();
+      console.log("overTenThousandthPlayerAccountKp created");
+      await expect(
+        doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          overTenThousandthPlayerAccountKp
+        )
+      ).to.be.rejectedWith(Error, "BoardFull"); // Not an anchor.Error because that's not how their macro is defined. Typo?
+    });*/
+    describe("First crank", async () => {
+      it("changes status to active with next crank time");
+      it("sends SOL to first player and program fee to game master");
+    });
+    describe("Subsequent cranks", async () => {
+      it("updates next crank time");
+      it("gives sol until they finished holding a potato");
+    });
+    describe("Affiliate link", async () => {
+      it("saves affiliate");
+      it("it splits program fee with affiliate link");
+    });
   });
 
   describe("Finishing", () => {
@@ -596,4 +754,9 @@ describe("HotPotato", () => {
     it("it does not allow new players to join");
     it("allows for game master to take out the game master money");
   });
+  it(
+    `gives up to 150% - (program fee)% throughout the game, 
+    pops out the winner, allows up to 10_000 to join and then closes 
+    when no more money`
+  );
 });
