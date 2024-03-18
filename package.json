@@ -8,12 +8,14 @@
     "@solana/web3.js": "^1.78.4",
     "assert": "*",
     "chai-as-promised": "^7.1.1",
-    "chai-bn": "^0.3.1"
+    "chai-bn": "^0.3.1",
+    "chai-spies": "^1.1.0"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.1",
     "@types/chai": "^4.3.12",
     "@types/chai-as-promised": "^7.1.8",
+    "@types/chai-spies": "^1.0.6",
     "@types/mocha": "^10.0.1",
     "chai": "^4.3.8",
     "mocha": "^10.2.0",

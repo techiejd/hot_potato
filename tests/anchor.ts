@@ -5,8 +5,10 @@ import type { HotPotato } from "../target/types/hot_potato";
 import chai, { expect } from "chai";
 import BN from "chai-bn";
 import chaiAsPromised from "chai-as-promised";
+import spies from "chai-spies";
 chai.use(BN(anchor.BN));
 chai.use(chaiAsPromised);
+chai.use(spies);
 
 describe("HotPotato", () => {
   const oneDay: anchor.BN = new anchor.BN(86400); // seconds
@@ -129,6 +131,8 @@ describe("HotPotato", () => {
   };
 
   const initLongGame = async () => initGame(oneDay, oneHour);
+  const initMediumGame = async () => initGame(bigNumZero, oneHour);
+  const initShortGame = async () => initGame(bigNumZero, bigNumZero);
 
   const doPlayerRequestHotPotato = async (
     gameAccountPublicKey: web3.PublicKey,
@@ -327,21 +331,63 @@ describe("HotPotato", () => {
       ));
     it("has a turn period", () =>
       expect(gameAccount.turnPeriodLength).to.be.a.bignumber.that.eq(oneHour));
-    it("logs state starting and pending", async () => {
-      const txDetails = await program.provider.connection.getTransaction(
-        txHash,
-        {
-          maxSupportedTransactionVersion: 0,
-          commitment: "confirmed",
-        }
-      );
-      const logs = txDetails?.meta?.logMessages;
-      expect(logs.join("\n")).to.include("Game initialized and is now pending");
-    });
     it("has a minimum ticket entry", () =>
       expect(gameAccount.minimumTicketEntry).to.be.a.bignumber.that.eq(
         minimumTicketEntry
       ));
+    it("emits game initialized event", async () => {
+      const gameMasterAccountKp = new web3.Keypair();
+      await airdrop(gameMasterAccountKp.publicKey);
+
+      const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
+
+      const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
+        [
+          boardAccountKp.publicKey.toBuffer(),
+          gameMasterAccountKp.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+
+      const txHash = await program.methods
+        .initialize(oneDay, oneHour, minimumTicketEntry)
+        .accounts({
+          newGame: gameAccountPublicKey,
+          newBoard: boardAccountKp.publicKey,
+          gameMaster: gameMasterAccountKp.publicKey,
+          boardAsSigner: boardAccountKp.publicKey,
+          systemProgram: web3.SystemProgram.programId,
+        })
+        .signers([gameMasterAccountKp, boardAccountKp])
+        .rpc()
+        .catch((e) => {
+          console.log(anchor.translateError(e, new Map()));
+          throw Error(e);
+        })
+        .then((txHash) => txHash);
+      await confirmTx(txHash);
+
+      const expectOnEvent = (e: unknown) => {
+        expect(e)
+          .to.have.property("gameMaster")
+          .and.to.eql(gameMasterAccountKp.publicKey);
+        expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+        expect(e)
+          .to.have.property("board")
+          .and.to.eql(boardAccountKp.publicKey);
+      };
+      const eventListenerSpy = chai.spy(expectOnEvent);
+      const gameInitializedListener = program.addEventListener(
+        "GameInitialized",
+        eventListenerSpy
+      );
+      await initLongGame();
+      // This line is only for test purposes to ensure the event
+      // listener has time to listen to event.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      program.removeEventListener(gameInitializedListener);
+      expect(eventListenerSpy).to.have.been.called();
+    });
   });
 
   describe("Playing", async () => {
@@ -506,27 +552,47 @@ describe("HotPotato", () => {
           staging: { ending: new anchor.BN(txTime).add(oneDay) },
         });
       });
-      it("logs status change to staging", async () => {
+      it("emits status change event to staging", async () => {
         const { gameAccountPublicKey, boardAccountPublicKey } =
           await initLongGame();
         const firstPlayerAccountKp = new web3.Keypair();
-
-        const { playerRequestsHotPotatoTxHash: firstPlayerJoinsTxHash } =
-          await doPlayerRequestHotPotato(
-            gameAccountPublicKey,
-            boardAccountPublicKey,
-            firstPlayerAccountKp
-          );
-
-        const txDetails = await program.provider.connection.getTransaction(
-          firstPlayerJoinsTxHash,
-          {
-            maxSupportedTransactionVersion: 0,
-            commitment: "confirmed",
-          }
+        const { refetchedGameAccount } = await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
         );
-        const logs = txDetails?.meta?.logMessages;
-        expect(logs.join("\n")).to.include("Game is now in staging mode");
+        let stagingEndingTime: anchor.BN;
+        const expectOnEvent = (e: unknown) => {
+          // Ok so this is actually being triggered
+          // every time the game state changes value
+          // while this event listener is alive during the test.
+          // Much like real life, we should filter for this game key.
+          expect(e).to.have.property("game");
+          if (e["game"] != gameAccountPublicKey) {
+            return;
+          }
+          console.log(e);
+          expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+          expect(e)
+            .to.have.property("state")
+            .and.to.have.property("staging")
+            .and.to.have.property("ending");
+          stagingEndingTime = e["state"]["staging"]["ending"];
+        };
+        const eventListenerSpy = chai.spy(expectOnEvent);
+        const gameInitializedListener = program.addEventListener(
+          "GameStateChanged",
+          eventListenerSpy
+        );
+        await initLongGame();
+        // This line is only for test purposes to ensure the event
+        // listener has time to listen to event.
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        program.removeEventListener(gameInitializedListener);
+        expect(eventListenerSpy).to.have.been.called();
+        expect(stagingEndingTime).to.be.a.bignumber.that.is.eq(
+          refetchedGameAccount.state.staging?.ending
+        );
       });
       it("transfer funds to the hotPotatoGame", async () => {
         const { gameAccountPublicKey, boardAccountPublicKey } =
@@ -675,7 +741,9 @@ describe("HotPotato", () => {
         );
       });
     });
-    /*it("allows for up to 10_000 players to join", async () => {
+    it(
+      "allows for up to 10_000 players to join" /*, async () => {
+      // Heads up! This'll take a while to run.
       const { gameAccountPublicKey, boardAccountPublicKey } =
         await initLongGame();
       const playerAccountKps = Array.from({ length: 10_000 }, () => {
@@ -733,13 +801,87 @@ describe("HotPotato", () => {
           overTenThousandthPlayerAccountKp
         )
       ).to.be.rejectedWith(Error, "BoardFull"); // Not an anchor.Error because that's not how their macro is defined. Typo?
-    });*/
+    }*/
+    );
     describe("First crank", async () => {
-      it("changes status to active with next crank time");
+      it("changes status to active with next crank time", async () => {
+        const {
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+        } = await initMediumGame();
+        const firstPlayerAccountKp = new web3.Keypair();
+        await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
+        );
+        const crankTxHash = await program.methods
+          .crank()
+          .accounts({
+            game: gameAccountPublicKey,
+            board: boardAccountPublicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+          })
+          .signers([gameMasterAccountKp])
+          .rpc();
+        const crankTxConfirmation = await confirmTx(crankTxHash);
+        const refetchedGameAccount =
+          await program.account.game.fetch(gameAccountPublicKey);
+        const txTime = await program.provider.connection.getBlockTime(
+          crankTxConfirmation.context.slot
+        );
+        expect(refetchedGameAccount.state).to.eql({
+          active: {
+            nextCrank: new anchor.BN(txTime).add(oneHour),
+          },
+        });
+      });
+      it("prevents next crank before next crank time", async () => {
+        const {
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+        } = await initMediumGame();
+        const firstPlayerAccountKp = new web3.Keypair();
+        await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
+        );
+        const crankTxHash = await program.methods
+          .crank()
+          .accounts({
+            game: gameAccountPublicKey,
+            board: boardAccountPublicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+          })
+          .signers([gameMasterAccountKp])
+          .rpc();
+        await confirmTx(crankTxHash);
+
+        await expect(
+          program.methods
+            .crank()
+            .accounts({
+              game: gameAccountPublicKey,
+              board: boardAccountPublicKey,
+              gameMaster: gameMasterAccountKp.publicKey,
+            })
+            .signers([gameMasterAccountKp])
+            .rpc()
+        ).to.be.rejectedWith(
+          anchor.AnchorError,
+          "CrankNotAllowedBeforeNextCrankTime"
+        );
+      });
+      it("emits crank event");
       it("sends SOL to first player and program fee to game master");
+      it("emits payout event");
     });
     describe("Subsequent cranks", async () => {
       it("updates next crank time");
+      it("emits crank event");
       it("gives sol until they finished holding a potato");
     });
     describe("Affiliate link", async () => {
@@ -750,7 +892,7 @@ describe("HotPotato", () => {
 
   describe("Finishing", () => {
     it("changes state to closing");
-    it("logs state change to closing");
+    it("emits closing event");
     it("it does not allow new players to join");
     it("allows for game master to take out the game master money");
   });

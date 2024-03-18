@@ -6,6 +6,20 @@ use std::{ops::Add, vec::Vec};
 
 use anchor_lang::error_code;
 
+#[event]
+pub struct GameInitialized {
+    pub game_master: Pubkey,
+    pub game: Pubkey,
+    pub board: Pubkey,
+}
+
+#[event]
+pub struct GameStateChanged {
+    pub game: Pubkey,
+    pub state: GameState,
+}
+
+
 #[error_code]
 pub enum HotPotatoError {
     NotGameMaster,
@@ -13,8 +27,9 @@ pub enum HotPotatoError {
     GameMasterCannotPlay,
     BelowTicketEntryMinimum,
     BoardMismatch,
-    CrankNotAllowedBeforeStagingEnds,
     BoardFull,
+    CrankNotAllowedBeforeStagingEnds,
+    CrankNotAllowedBeforeNextCrankTime,
 }
 
 mod constants {
@@ -26,10 +41,10 @@ mod constants {
 pub enum GameState {
     Pending,
     Staging { ending: i64 },
-    /*
     Active {
-        round: u64,
+        next_crank: i64,
     },
+    /*
     Closed {
         holding_potatoes: [Pubkey],
         holding_stars: [PubKey],
@@ -87,8 +102,15 @@ pub struct Game {
 impl Game {
     pub const SIZE: usize = 8 + 8 + 8 + 16 + 32 + 32;
 
+    fn set_state_active_with_next_crank_given(&mut self, current_time: i64) {
+        self.state = GameState::Active {
+            next_crank: current_time.add(self.turn_period_length),
+        };
+    }
+
     pub fn request_hot_potato<F0, F1>(
         &mut self,
+        for_game: &Pubkey,
         player: &Pubkey,
         ticket_entry: u64,
         charge_ticket_entry: Box<F0>,
@@ -117,7 +139,10 @@ impl Game {
                         .unix_timestamp
                         .add(self.staging_period_length),
                 };
-                msg!("Game is now in staging mode");
+                emit!(GameStateChanged {
+                    game: *for_game,
+                    state: self.state,
+                });
             }
             _ => {
                 give_player_hot_potato()?;
@@ -131,16 +156,21 @@ impl Game {
             self.state != GameState::Pending,
             HotPotatoError::CannotCrankWhilePending
         );
+        let current_time = Clock::get().expect("No system clock time").unix_timestamp;
         match self.state {
             GameState::Staging { ending } => {
                 require!(
-                    Clock::get()
-                        .expect("No system clock time")
-                        .unix_timestamp
-                        .ge(&ending),
+                    current_time.ge(&ending),
                     HotPotatoError::CrankNotAllowedBeforeStagingEnds
                 );
-                self.state = GameState::Pending;
+                self.set_state_active_with_next_crank_given(current_time);
+            }
+            GameState::Active { next_crank } => {
+                require!(
+                    current_time.ge(&next_crank),
+                    HotPotatoError::CrankNotAllowedBeforeNextCrankTime
+                );
+                self.set_state_active_with_next_crank_given(current_time);
             }
             _ => {}
         }
@@ -171,7 +201,11 @@ mod hot_potato {
         };
         ctx.accounts.new_board.load_init()?.owning_game_key =
             *ctx.accounts.new_game.to_account_info().key;
-        msg!("Game initialized and is now pending");
+        emit!(GameInitialized {
+            game_master: *ctx.accounts.game_master.key,
+            game: *ctx.accounts.new_game.to_account_info().key,
+            board: *ctx.accounts.new_board.to_account_info().key,
+        });
         Ok(())
     }
 
@@ -189,6 +223,7 @@ mod hot_potato {
 
     pub fn request_hot_potato(ctx: Context<RequestHotPotato>, ticket_entry: u64) -> Result<()> {
         let game = &mut ctx.accounts.game;
+        let for_game = game.to_account_info().key();
         let game_account_info = game.to_account_info().clone();
         let player = &ctx.accounts.player;
         let board = &mut ctx.accounts.board.load_mut()?;
@@ -219,6 +254,7 @@ mod hot_potato {
                 board.push(potato_holding_information)
             };
         game.request_hot_potato(
+            &for_game,
             &player.key(),
             actual_ticket_entry,
             Box::new(charge_ticket_entry),
