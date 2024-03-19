@@ -17,6 +17,7 @@ describe("HotPotato", () => {
   const bigNumZero = new anchor.BN(0);
   const minimumTicketEntry = new anchor.BN(web3.LAMPORTS_PER_SOL / 2);
   const NumTurns = 150;
+  const MaxNumOfRemainingAccountsDoableInOneDisbursementTx = 25;
   anchor.setProvider(anchor.AnchorProvider.env());
   type GameAccount = Awaited<ReturnType<typeof program.account.game.fetch>>;
   type BoardAccount = Awaited<ReturnType<typeof program.account.board.fetch>>;
@@ -71,8 +72,8 @@ describe("HotPotato", () => {
       .to.have.property("turnNumber")
       .and.to.eq(expected.turnNumber);
     expect(holder)
-      .to.have.property("payOutsDue")
-      .and.is.eq(expected.payOutsDue);
+      .to.have.property("paymentPending")
+      .and.is.eq(expected.paymentPending);
     expect(holder)
       .to.have.property("turnAmount")
       .and.to.be.a.bignumber.that.is.eq(expected.turnAmount);
@@ -81,7 +82,7 @@ describe("HotPotato", () => {
     const emptyBoardSlot = {
       player: web3.SystemProgram.programId,
       turnNumber: 0,
-      payOutsDue: 0,
+      paymentPending: 0,
       turnAmount: bigNumZero,
     };
     expectBoardSlotToMatch(holder, emptyBoardSlot);
@@ -195,6 +196,37 @@ describe("HotPotato", () => {
     return {
       crankTxHash,
       crankTxConfirmation,
+    };
+  };
+
+  const getPastFirstCrankInShortGameWithMaxTxPlayers = async () => {
+    const { gameAccountPublicKey, boardAccountPublicKey, gameMasterAccountKp } =
+      await initShortGame();
+    const accounts = await Promise.all(
+      Array.from(
+        { length: MaxNumOfRemainingAccountsDoableInOneDisbursementTx },
+        () => new web3.Keypair()
+      )
+    );
+    await Promise.all(
+      accounts.map((playerAccountKp) =>
+        doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          playerAccountKp
+        )
+      )
+    );
+    await doCrank(
+      gameMasterAccountKp,
+      gameAccountPublicKey,
+      boardAccountPublicKey
+    );
+    return {
+      gameAccountPublicKey,
+      boardAccountPublicKey,
+      gameMasterAccountKp,
+      accounts,
     };
   };
 
@@ -437,13 +469,14 @@ describe("HotPotato", () => {
 
   describe("Playing", async () => {
     const programFeePerTurn = Math.floor(
-      Math.floor((minimumTicketEntry.toNumber() * permilleProgramFee) / 1000) /
-        NumTurns
+      (Math.floor(minimumTicketEntry.toNumber() / NumTurns) *
+        permilleProgramFee) /
+        1000
     );
     const returnPerTurn = Math.floor(
       Math.floor(
-        (minimumTicketEntry.toNumber() * (1000 - permilleProgramFee)) / 1000
-      ) / NumTurns
+        (minimumTicketEntry.toNumber() * (1000 - permilleProgramFee)) / NumTurns
+      ) / 1000
     );
     const amountWithoutChumpChange =
       NumTurns * (programFeePerTurn + returnPerTurn);
@@ -454,7 +487,7 @@ describe("HotPotato", () => {
       const initializedBoardSlot = {
         player,
         turnNumber: 0,
-        payOutsDue: 0,
+        paymentPending: 0,
         turnAmount: new anchor.BN(amountWithoutChumpChange / NumTurns),
       };
       expectBoardSlotToMatch(holder, initializedBoardSlot);
@@ -995,7 +1028,7 @@ describe("HotPotato", () => {
         );
         const firstPlayerSlot = refetchedboardAccount.potatoHolders[0];
         expect(firstPlayerSlot.turnNumber).to.eq(1);
-        expect(firstPlayerSlot.payOutsDue).to.eq(1);
+        expect(firstPlayerSlot.paymentPending).to.eq(1);
       });
     });
     describe("Disburse", async () => {
@@ -1006,7 +1039,7 @@ describe("HotPotato", () => {
           await initLongGame();
         await expect(
           program.methods
-            .disburseToPotatoHolders()
+            .disburseToPotatoHolders(0)
             .accounts({
               game: gameAccountPublicKey,
               board: someOtherBoardAccountPublicKey,
@@ -1022,7 +1055,7 @@ describe("HotPotato", () => {
         const someOtherAccountKp = new web3.Keypair();
         await expect(
           program.methods
-            .disburseToPotatoHolders()
+            .disburseToPotatoHolders(0)
             .accounts({
               game: gameAccountPublicKey,
               board: boardAccountPublicKey,
@@ -1032,58 +1065,237 @@ describe("HotPotato", () => {
             .rpc()
         ).to.be.rejectedWith(Error, "NotGameMaster");
       });
-      it("checks each player");
-      it("sends SOL to player and program fee to game master and updates player's board", async () => {
+      it("checks each player in order", async () => {
         const {
-          gameMasterAccountKp,
           gameAccountPublicKey,
           boardAccountPublicKey,
-        } = await initMediumGame();
-        const firstPlayerAccountKp = new web3.Keypair();
+          gameMasterAccountKp,
+        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
+        const refetchedBoardAccount = await program.account.board.fetch(
+          boardAccountPublicKey
+        );
+        const firstPlayersAccounts = refetchedBoardAccount.potatoHolders.slice(
+          0,
+          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
+        );
+        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
+          pubkey: holder.player,
+          isSigner: false,
+          isWritable: true,
+        }));
+        const allButLastTwo = remainingAccounts.slice(0, -2);
+        const lastTwo = remainingAccounts.slice(-2);
+        await expect(
+          program.methods
+            .disburseToPotatoHolders(0)
+            .accounts({
+              game: gameAccountPublicKey,
+              board: boardAccountPublicKey,
+              gameMaster: gameMasterAccountKp.publicKey,
+            })
+            .signers([gameMasterAccountKp])
+            .remainingAccounts([...allButLastTwo, lastTwo[1], lastTwo[0]])
+            .rpc()
+        ).to.be.rejectedWith(anchor.AnchorError, "PlayerSlotMismatch");
+        await expect(
+          program.methods
+            .disburseToPotatoHolders(0)
+            .accounts({
+              game: gameAccountPublicKey,
+              board: boardAccountPublicKey,
+              gameMaster: gameMasterAccountKp.publicKey,
+            })
+            .signers([gameMasterAccountKp])
+            .remainingAccounts(remainingAccounts)
+            .rpc()
+        ).to.eventually.be.ok;
+      });
+      it(`sends SOL to players and their program fee to game master
+            and updates players' board`, async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
         const gameMasterStartingBalance =
           await program.provider.connection.getBalance(
             gameMasterAccountKp.publicKey
           );
-
-        await doPlayerRequestHotPotato(
-          gameAccountPublicKey,
-          boardAccountPublicKey,
-          firstPlayerAccountKp
-        );
-        await doCrank(
-          gameMasterAccountKp,
-          gameAccountPublicKey,
+        const fetchedBoardAccount = await program.account.board.fetch(
           boardAccountPublicKey
         );
+        const firstPlayersAccounts = fetchedBoardAccount.potatoHolders.slice(
+          0,
+          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
+        );
+        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
+          pubkey: holder.player,
+          isSigner: false,
+          isWritable: true,
+        }));
 
-        const firstPlayerStartingBalanceAfterGettingHotPotato =
-          await program.provider.connection.getBalance(
-            firstPlayerAccountKp.publicKey
-          );
+        const accountStartingBalances = await Promise.all(
+          remainingAccounts.map((acc) =>
+            program.provider.connection.getBalance(acc.pubkey)
+          )
+        );
+
+        const txHash = await program.methods
+          .disburseToPotatoHolders(0)
+          .accounts({
+            game: gameAccountPublicKey,
+            board: boardAccountPublicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+          })
+          .signers([gameMasterAccountKp])
+          .remainingAccounts(remainingAccounts)
+          .rpc();
+        confirmTx(txHash);
 
         const gameMasterEndingBalance =
           await program.provider.connection.getBalance(
             gameMasterAccountKp.publicKey
           );
-        const firstPlayerEndingBalance =
-          await program.provider.connection.getBalance(
-            firstPlayerAccountKp.publicKey
-          );
-
-        expect(gameMasterEndingBalance).to.be.eq(
-          gameMasterStartingBalance + programFeePerTurn
+        const accountEndingBalances = await Promise.all(
+          remainingAccounts.map((account) =>
+            program.provider.connection.getBalance(account.pubkey)
+          )
         );
-        expect(firstPlayerEndingBalance).to.be.eq(
-          firstPlayerStartingBalanceAfterGettingHotPotato - programFeePerTurn
+        accountEndingBalances.every((endingBalance, i) => {
+          expect(endingBalance).to.be.eq(
+            accountStartingBalances[i] + returnPerTurn
+          );
+          return true;
+        });
+        expect(gameMasterEndingBalance).to.be.eq(
+          gameMasterStartingBalance +
+            programFeePerTurn *
+              MaxNumOfRemainingAccountsDoableInOneDisbursementTx
+        );
+
+        const refetchedBoardAccount = await program.account.board.fetch(
+          boardAccountPublicKey
+        );
+        refetchedBoardAccount.potatoHolders
+          .slice(0, MaxNumOfRemainingAccountsDoableInOneDisbursementTx)
+          .every((holder) => {
+            expect(holder.turnNumber).to.eq(1);
+            expect(holder.paymentPending).to.eq(0);
+            return true;
+          });
+      });
+      it("emits PlayerPayout event", async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
+        const fetchedBoardAccount = await program.account.board.fetch(
+          boardAccountPublicKey
+        );
+        const firstPlayersAccounts = fetchedBoardAccount.potatoHolders.slice(
+          0,
+          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
+        );
+        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
+          pubkey: holder.player,
+          isSigner: false,
+          isWritable: true,
+        }));
+        let i = 0;
+        const expectOnEvent = (e: unknown) => {
+          expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+          expect(e).to.have.property("turn").and.to.eql(1);
+          expect(e)
+            .to.have.property("player")
+            .and.to.eql(remainingAccounts[i].pubkey);
+          expect(e)
+            .to.have.property("amount")
+            .and.to.be.a.bignumber.that.is.eq(new anchor.BN(returnPerTurn));
+          i++;
+        };
+        const eventListenerSpy = chai.spy(expectOnEvent);
+        const gameInitializedListener = program.addEventListener(
+          "PotatoHolderPaid",
+          eventListenerSpy
+        );
+
+        await program.methods
+          .disburseToPotatoHolders(0)
+          .accounts({
+            game: gameAccountPublicKey,
+            board: boardAccountPublicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+          })
+          .signers([gameMasterAccountKp])
+          .remainingAccounts(remainingAccounts)
+          .rpc();
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        program.removeEventListener(gameInitializedListener);
+        expect(eventListenerSpy).to.have.been.called.exactly(
+          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
         );
       });
-      it("emits PlayerPayout event");
-      it("emits GameMasterPayout event");
+      it("emits GameMasterPayout event", async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
+        const fetchedBoardAccount = await program.account.board.fetch(
+          boardAccountPublicKey
+        );
+        const firstPlayersAccounts = fetchedBoardAccount.potatoHolders.slice(
+          0,
+          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
+        );
+        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
+          pubkey: holder.player,
+          isSigner: false,
+          isWritable: true,
+        }));
+        const expectOnEvent = (e: unknown) => {
+          expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+          expect(e)
+            .to.have.property("amount")
+            .and.to.be.a.bignumber.that.is.eq(
+              new anchor.BN(
+                programFeePerTurn *
+                  MaxNumOfRemainingAccountsDoableInOneDisbursementTx
+              )
+            );
+        };
+        const eventListenerSpy = chai.spy(expectOnEvent);
+        const gameInitializedListener = program.addEventListener(
+          "GameMasterPaid",
+          eventListenerSpy
+        );
+
+        await program.methods
+          .disburseToPotatoHolders(0)
+          .accounts({
+            game: gameAccountPublicKey,
+            board: boardAccountPublicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+          })
+          .signers([gameMasterAccountKp])
+          .remainingAccounts(remainingAccounts)
+          .rpc()
+          .catch((e) => {
+            console.log(e);
+            throw e;
+          });
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        program.removeEventListener(gameInitializedListener);
+        expect(eventListenerSpy).to.have.been.called();
+      });
     });
-    describe("Subsequent cranks", async () => {
+    describe("Subsequent cranks and disbursement", async () => {
+      it("fails if payment is due");
       it("updates next crank time");
       it("emits crank event");
-      it("gives sol until they finished holding a potato");
     });
     describe("Affiliate link", async () => {
       it("saves affiliate");

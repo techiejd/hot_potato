@@ -27,6 +27,19 @@ pub struct PotatoReceived {
     pub ticket_entry_amount: u64,
 }
 
+#[event]
+pub struct PotatoHolderPaid {
+    pub game: Pubkey,
+    pub player: Pubkey,
+    pub amount: u64,
+    pub turn: u32,
+}
+
+#[event]
+pub struct GameMasterPaid {
+    pub game: Pubkey,
+    pub amount: u64,
+}
 
 #[error_code]
 pub enum HotPotatoError {
@@ -39,11 +52,12 @@ pub enum HotPotatoError {
     CrankNotAllowedBeforeStagingEnds,
     CrankNotAllowedBeforeNextCrankTime,
     ImpossibleProgramFee,
+    PlayerSlotMismatch
 }
 
 mod utils {
     pub const NUM_TURNS: u64 = 150;
-    pub const NONUNIQUE_POTATO_HOLDERS_MAX: u64 = 10_000;
+    pub const NONUNIQUE_POTATO_HOLDERS_MAX: u16 = 10_000;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, Copy)]
@@ -69,7 +83,7 @@ pub enum GameState {
 pub struct PotatoHoldingInformation {
     pub player: Pubkey,   // 32 bytes
     pub turn_number: u32, // 4 bytes, have to use half word even though u8 would do because of zero copy repr(C)
-    pub pay_outs_due: u32, // 4 bytes
+    pub payment_pending: u32, // 4 bytes, straight up can't use boolean
     pub turn_amount: u64, // 8 bytes
 }
 
@@ -85,7 +99,7 @@ pub struct Board {
 
 impl Board {
     fn next_tail(&self) -> u64 {
-        (self.tail + 1) % utils::NONUNIQUE_POTATO_HOLDERS_MAX
+        (self.tail + 1) % (utils::NONUNIQUE_POTATO_HOLDERS_MAX as u64)
     }
     pub fn push(&mut self, potato_holding_information: PotatoHoldingInformation) -> Result<()> {
         // This function adds a potato holding information to the end of the board in a round-robin fashion
@@ -99,7 +113,41 @@ impl Board {
     }
 
     pub fn crank(&mut self) -> Result<()> {
+        // From head to tail, increase pay_outs_due and turn_number by 1
+        let mut current = self.head;
+        while current != self.tail {
+            self.potato_holders[current as usize].payment_pending += 1;
+            self.potato_holders[current as usize].turn_number += 1;
+            current = (current + 1) % (utils::NONUNIQUE_POTATO_HOLDERS_MAX as u64);
+        }
         Ok(())
+    }
+
+    pub fn process_chunk_for_payment<'info>(&mut self, chunk: &[AccountInfo<'info>], offset: &u16, fee: &u16) -> Result<(u64, u64)> {
+        // Since this board exists in a different account, it's better to process the chunk here.
+        let mut total_paid = 0u64;
+        let mut total_fee = 0u64;
+        for (i, acc) in chunk.iter().enumerate() {
+            let potato_holding_information = &mut self.potato_holders[(((*offset) + i as u16) % utils::NONUNIQUE_POTATO_HOLDERS_MAX) as usize];
+            require_eq!(
+                potato_holding_information.player,
+                acc.key(),
+                HotPotatoError::PlayerSlotMismatch
+            );
+            let fee = (potato_holding_information.turn_amount * (*fee as u64)) / 1000;
+            let for_potato_holder = potato_holding_information.turn_amount - fee;
+            acc.add_lamports(for_potato_holder)?;
+            potato_holding_information.payment_pending = 0;
+            emit!(PotatoHolderPaid {
+                game: self.owning_game_key,
+                player: *acc.key,
+                amount: for_potato_holder,
+                turn: potato_holding_information.turn_number,
+            });
+            total_paid += potato_holding_information.turn_amount;
+            total_fee += fee;
+        }
+        Ok((total_paid, total_fee))
     }
 }
 
@@ -144,7 +192,7 @@ impl Game {
             push_potato_holding_information(PotatoHoldingInformation {
                 player: *player,
                 turn_number: 0,
-                pay_outs_due: 0,
+                payment_pending: 0,
                 turn_amount: ticket_entry / utils::NUM_TURNS,
             })?;
             emit!(PotatoReceived {
@@ -269,7 +317,7 @@ mod hot_potato {
         let calculate_portion_per_turn = |permille: u16| -> u64 {
             ((ticket_entry * permille as u64) / 1000) / utils::NUM_TURNS
         };
-        let actual_ticket_entry = utils::NUM_TURNS * (calculate_portion_per_turn( game.permille_program_fee) + calculate_portion_per_turn(1000 - game.permille_program_fee));
+        let actual_ticket_entry = utils::NUM_TURNS * (calculate_portion_per_turn(game.permille_program_fee) + calculate_portion_per_turn(1000 - game.permille_program_fee));
         let charge_ticket_entry = || {
             let cpi_context = CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
@@ -293,15 +341,16 @@ mod hot_potato {
         )
     }
 
-    pub fn disburse_to_potato_holders(ctx: Context<DisburseToPotatoHolders>) -> Result<()> {
-        /*let game = &mut ctx.accounts.game;
+    pub fn disburse_to_potato_holders(ctx: Context<DisburseToPotatoHolders>, offset: u16) -> Result<()> {
+        let game = &mut ctx.accounts.game;
         let board = &mut ctx.accounts.board.load_mut()?;
-        let for_game = game.to_account_info().key();
-        require_keys_eq!(
-            game.game_master,
-            ctx.accounts.game_master.key(),
-            HotPotatoError::NotGameMaster
-        );*/
+        let (from_game, for_game_master) = board.process_chunk_for_payment(&ctx.remaining_accounts, &offset, &game.permille_program_fee)?;
+        ctx.accounts.game_master.add_lamports(for_game_master)?;
+        emit!(GameMasterPaid {
+            game: game.to_account_info().key(),
+            amount: for_game_master,
+        });
+        game.sub_lamports(from_game)?;
         Ok(())
     }
 }
@@ -349,7 +398,7 @@ pub struct RequestHotPotato<'info> {
 
 #[derive(Accounts)]
 pub struct DisburseToPotatoHolders<'info> {
-    #[account(constraint = 
+    #[account(mut, constraint = 
         game.board == board.to_account_info().key()
         @ HotPotatoError::BoardMismatch,
         constraint = 
@@ -358,6 +407,6 @@ pub struct DisburseToPotatoHolders<'info> {
     pub game: Account<'info, Game>,
     #[account(mut)]
     pub board: AccountLoader<'info, Board>,
+    #[account(mut)]
     pub game_master: Signer<'info>,
-    pub system_program: Program<'info, System>,
 }
