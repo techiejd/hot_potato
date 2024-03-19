@@ -5,6 +5,7 @@ use solana_program::sysvar::clock::Clock;
 use std::{ops::Add, vec::Vec};
 
 use anchor_lang::error_code;
+use std::result::Result::Ok;
 
 #[event]
 pub struct GameInitialized {
@@ -37,9 +38,10 @@ pub enum HotPotatoError {
     BoardFull,
     CrankNotAllowedBeforeStagingEnds,
     CrankNotAllowedBeforeNextCrankTime,
+    ImpossibleProgramFee,
 }
 
-mod constants {
+mod utils {
     pub const NUM_TURNS: u64 = 150;
     pub const NONUNIQUE_POTATO_HOLDERS_MAX: u64 = 10_000;
 }
@@ -66,7 +68,8 @@ pub enum GameState {
 #[repr(C)]
 pub struct PotatoHoldingInformation {
     pub player: Pubkey,   // 32 bytes
-    pub turn_number: u64, // 8 bytes
+    pub turn_number: u32, // 4 bytes, have to use half word even though u8 would do because of zero copy repr(C)
+    pub pay_outs_due: u32, // 4 bytes
     pub turn_amount: u64, // 8 bytes
 }
 
@@ -82,7 +85,7 @@ pub struct Board {
 
 impl Board {
     fn next_tail(&self) -> u64 {
-        (self.tail + 1) % constants::NONUNIQUE_POTATO_HOLDERS_MAX
+        (self.tail + 1) % utils::NONUNIQUE_POTATO_HOLDERS_MAX
     }
     pub fn push(&mut self, potato_holding_information: PotatoHoldingInformation) -> Result<()> {
         // This function adds a potato holding information to the end of the board in a round-robin fashion
@@ -94,6 +97,10 @@ impl Board {
         }
         Ok(())
     }
+
+    pub fn crank(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[account]
@@ -101,13 +108,14 @@ pub struct Game {
     pub staging_period_length: i64, // 8 bytes
     pub turn_period_length: i64,    // 8 bytes
     pub minimum_ticket_entry: u64,  // 8 bytes
+    pub permille_program_fee: u16,  // 2 bytes but 8 bytes with padding
     pub state: GameState,           // 16 byte
     pub game_master: Pubkey,        // 32 bytes
     pub board: Pubkey,              // 32 bytes
 }
 
 impl Game {
-    pub const SIZE: usize = 8 + 8 + 8 + 16 + 32 + 32;
+    pub const SIZE: usize = 8 + 8 + 8 + 8 + 16 + 32 + 32;
 
     fn set_state_active_with_next_crank_given(&mut self, current_time: i64, for_game: &Pubkey) {
         self.state = GameState::Active {
@@ -136,7 +144,8 @@ impl Game {
             push_potato_holding_information(PotatoHoldingInformation {
                 player: *player,
                 turn_number: 0,
-                turn_amount: ticket_entry / constants::NUM_TURNS,
+                pay_outs_due: 0,
+                turn_amount: ticket_entry / utils::NUM_TURNS,
             })?;
             emit!(PotatoReceived {
                 game: *for_game,
@@ -205,10 +214,17 @@ mod hot_potato {
         staging_period_length: i64,
         turn_period_length: i64,
         minimum_ticket_entry: u64,
+        permille_program_fee: u16,
     ) -> Result<()> {
+        require_gte!(
+            1_000,
+            permille_program_fee,
+            HotPotatoError::ImpossibleProgramFee
+        );
         *ctx.accounts.new_game = Game {
             game_master: *ctx.accounts.game_master.key,
             board: *ctx.accounts.new_board.to_account_info().key,
+            permille_program_fee,
             state: GameState::Pending,
             staging_period_length,
             turn_period_length,
@@ -226,6 +242,7 @@ mod hot_potato {
 
     pub fn crank(ctx: Context<Crank>) -> Result<()> {
         let game = &mut ctx.accounts.game;
+        let board = &mut ctx.accounts.board.load_mut()?;
         let for_game = game.to_account_info().key();
         require_keys_eq!(
             game.game_master,
@@ -234,6 +251,7 @@ mod hot_potato {
         );
 
         game.crank(&for_game)?;
+        board.crank()?;
         Ok(())
     }
 
@@ -253,8 +271,10 @@ mod hot_potato {
             game.minimum_ticket_entry,
             HotPotatoError::BelowTicketEntryMinimum
         );
-        let chump_change = ticket_entry % constants::NUM_TURNS;
-        let actual_ticket_entry = ticket_entry - chump_change;
+        let calculate_portion_per_turn = |permille: u16| -> u64 {
+            ((ticket_entry * permille as u64) / 1000) / utils::NUM_TURNS
+        };
+        let actual_ticket_entry = utils::NUM_TURNS * (calculate_portion_per_turn( game.permille_program_fee) + calculate_portion_per_turn(1000 - game.permille_program_fee));
         let charge_ticket_entry = || {
             let cpi_context = CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
@@ -276,6 +296,18 @@ mod hot_potato {
             Box::new(charge_ticket_entry),
             Box::new(push_potato_holding_information),
         )
+    }
+
+    pub fn disburse_to_potato_holders(ctx: Context<DisburseToPotatoHolders>) -> Result<()> {
+        /*let game = &mut ctx.accounts.game;
+        let board = &mut ctx.accounts.board.load_mut()?;
+        let for_game = game.to_account_info().key();
+        require_keys_eq!(
+            game.game_master,
+            ctx.accounts.game_master.key(),
+            HotPotatoError::NotGameMaster
+        );*/
+        Ok(())
     }
 }
 
@@ -300,7 +332,6 @@ pub struct Crank<'info> {
     pub game: Account<'info, Game>,
     #[account(mut)]
     pub board: AccountLoader<'info, Board>,
-    #[account(signer)]
     pub game_master: Signer<'info>,
 }
 
@@ -313,7 +344,22 @@ pub struct RequestHotPotato<'info> {
     pub game: Account<'info, Game>,
     #[account(mut)]
     pub board: AccountLoader<'info, Board>,
-    #[account(mut, signer)]
+    #[account(mut)]
     pub player: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DisburseToPotatoHolders<'info> {
+    #[account(constraint = 
+        game.board == board.to_account_info().key()
+        @ HotPotatoError::BoardMismatch,
+        constraint = 
+        game.game_master == game_master.to_account_info().key()
+        @ HotPotatoError::NotGameMaster)]
+    pub game: Account<'info, Game>,
+    #[account(mut)]
+    pub board: AccountLoader<'info, Board>,
+    pub game_master: Signer<'info>,
     pub system_program: Program<'info, System>,
 }

@@ -12,6 +12,7 @@ chai.use(spies);
 
 describe("HotPotato", () => {
   const oneDay: anchor.BN = new anchor.BN(86400); // seconds
+  const permilleProgramFee = 35; // 3.5% percent
   const oneHour = new anchor.BN(3600); // seconds
   const bigNumZero = new anchor.BN(0);
   const minimumTicketEntry = new anchor.BN(web3.LAMPORTS_PER_SOL / 2);
@@ -68,7 +69,10 @@ describe("HotPotato", () => {
     expect(holder).to.have.property("player").and.to.eql(expected.player);
     expect(holder)
       .to.have.property("turnNumber")
-      .and.to.be.a.bignumber.that.is.eq(expected.turnNumber);
+      .and.to.eq(expected.turnNumber);
+    expect(holder)
+      .to.have.property("payOutsDue")
+      .and.is.eq(expected.payOutsDue);
     expect(holder)
       .to.have.property("turnAmount")
       .and.to.be.a.bignumber.that.is.eq(expected.turnAmount);
@@ -76,7 +80,8 @@ describe("HotPotato", () => {
   const expectEmptyBoardSlot = (holder: PotatoHolder) => {
     const emptyBoardSlot = {
       player: web3.SystemProgram.programId,
-      turnNumber: bigNumZero,
+      turnNumber: 0,
+      payOutsDue: 0,
       turnAmount: bigNumZero,
     };
     expectBoardSlotToMatch(holder, emptyBoardSlot);
@@ -99,7 +104,12 @@ describe("HotPotato", () => {
     );
 
     const txHash = await program.methods
-      .initialize(stagingPeriodLength, turnPeriodLength, minimumTicketEntry)
+      .initialize(
+        stagingPeriodLength,
+        turnPeriodLength,
+        minimumTicketEntry,
+        permilleProgramFee
+      )
       .accounts({
         newGame: gameAccountPublicKey,
         newBoard: boardAccountKp.publicKey,
@@ -161,16 +171,30 @@ describe("HotPotato", () => {
     const playerRequestsHotPotatoTxConfirmation = await confirmTx(
       playerRequestsHotPotatoTxHash
     );
-    const refetchedGameAccount =
-      await program.account.game.fetch(gameAccountPublicKey);
-    const refetchedboardAccount = await program.account.board.fetch(
-      refetchedGameAccount.board
-    );
     return {
       playerRequestsHotPotatoTxHash,
       playerRequestsHotPotatoTxConfirmation,
-      refetchedGameAccount,
-      refetchedboardAccount,
+    };
+  };
+
+  const doCrank = async (
+    gameMasterAccountKp: web3.Keypair,
+    gameAccountPublicKey: web3.PublicKey,
+    boardAccountPublicKey: web3.PublicKey
+  ) => {
+    const crankTxHash = await program.methods
+      .crank()
+      .accounts({
+        game: gameAccountPublicKey,
+        board: boardAccountPublicKey,
+        gameMaster: gameMasterAccountKp.publicKey,
+      })
+      .signers([gameMasterAccountKp])
+      .rpc();
+    const crankTxConfirmation = await confirmTx(crankTxHash);
+    return {
+      crankTxHash,
+      crankTxConfirmation,
     };
   };
 
@@ -217,7 +241,7 @@ describe("HotPotato", () => {
         );
       await expect(
         program.methods
-          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .initialize(oneDay, oneHour, minimumTicketEntry, permilleProgramFee)
           .accounts({
             newGame: failingGameAccountPublicKey0,
             ...restOfAccounts,
@@ -227,7 +251,7 @@ describe("HotPotato", () => {
       ).to.be.rejectedWith(Error, "ConstraintSeeds");
       await expect(
         program.methods
-          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .initialize(oneDay, oneHour, minimumTicketEntry, permilleProgramFee)
           .accounts({
             newGame: failingGameAccountPublicKey1,
             ...restOfAccounts,
@@ -237,7 +261,7 @@ describe("HotPotato", () => {
       ).to.be.rejectedWith(Error, "ConstraintSeeds");
       await expect(
         program.methods
-          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .initialize(oneDay, oneHour, minimumTicketEntry, permilleProgramFee)
           .accounts({
             newGame: failingGameAccountPublicKey2,
             ...restOfAccounts,
@@ -247,7 +271,7 @@ describe("HotPotato", () => {
       ).to.be.rejectedWith(Error, "ConstraintSeeds");
       await expect(
         program.methods
-          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .initialize(oneDay, oneHour, minimumTicketEntry, permilleProgramFee)
           .accounts({
             newGame: failingGameAccountPublicKey3,
             ...restOfAccounts,
@@ -257,7 +281,7 @@ describe("HotPotato", () => {
       ).to.be.rejectedWith(Error, "ConstraintSeeds");
       await expect(
         program.methods
-          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .initialize(oneDay, oneHour, minimumTicketEntry, permilleProgramFee)
           .accounts({
             newGame: failingGameAccountPublicKey4,
             ...restOfAccounts,
@@ -280,19 +304,45 @@ describe("HotPotato", () => {
       const someOtherAccountKp = new web3.Keypair();
       await expect(
         program.methods
-          .initialize(oneDay, oneHour, minimumTicketEntry)
+          .initialize(oneDay, oneHour, minimumTicketEntry, permilleProgramFee)
           .accounts({
             newGame: gameAccountPublicKey,
             newBoard: boardAccountKp.publicKey,
             gameMaster: gameMasterAccountKp.publicKey,
+            boardAsSigner: boardAccountKp.publicKey,
             systemProgram: web3.SystemProgram.programId,
           })
-          .signers([someOtherAccountKp])
+          .signers([gameMasterAccountKp, boardAccountKp, someOtherAccountKp])
           .rpc()
       ).to.be.rejectedWith(
         Error,
         `unknown signer: ${someOtherAccountKp.publicKey.toString()}`
       );
+    });
+    it("fails initializing if more than 1000 is given as permilleProgramFee", async () => {
+      const gameMasterAccountKp = new web3.Keypair();
+      await airdrop(gameMasterAccountKp.publicKey);
+      const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
+      const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
+        [
+          boardAccountKp.publicKey.toBuffer(),
+          gameMasterAccountKp.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+      await expect(
+        program.methods
+          .initialize(oneDay, oneHour, minimumTicketEntry, 1001)
+          .accounts({
+            newGame: gameAccountPublicKey,
+            newBoard: boardAccountKp.publicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+            boardAsSigner: boardAccountKp.publicKey,
+            systemProgram: web3.SystemProgram.programId,
+          })
+          .signers([gameMasterAccountKp, boardAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(Error, "ImpossibleProgramFee");
     });
   });
 
@@ -301,14 +351,12 @@ describe("HotPotato", () => {
     let boardAccountPublicKey: web3.PublicKey;
     let gameAccount: GameAccount;
     let boardAccount: BoardAccount;
-    let txHash: string;
     before(async () => {
       const res = await initLongGame();
       gameMasterAccountKp = res.gameMasterAccountKp;
       boardAccountPublicKey = res.boardAccountPublicKey;
       gameAccount = res.gameAccount;
       boardAccount = res.boardAccount;
-      txHash = res.txHash;
     });
 
     it("has game master", () =>
@@ -329,6 +377,8 @@ describe("HotPotato", () => {
       expect(gameAccount.stagingPeriodLength).to.be.a.bignumber.that.eq(
         oneDay
       ));
+    it("has permille program fee", () =>
+      expect(gameAccount.permilleProgramFee).to.eq(permilleProgramFee));
     it("has a turn period", () =>
       expect(gameAccount.turnPeriodLength).to.be.a.bignumber.that.eq(oneHour));
     it("has a minimum ticket entry", () =>
@@ -365,7 +415,7 @@ describe("HotPotato", () => {
       );
 
       const txHash = await program.methods
-        .initialize(oneDay, oneHour, minimumTicketEntry)
+        .initialize(oneDay, oneHour, minimumTicketEntry, permilleProgramFee)
         .accounts({
           newGame: gameAccountPublicKey,
           newBoard: boardAccountKp.publicKey,
@@ -374,12 +424,7 @@ describe("HotPotato", () => {
           systemProgram: web3.SystemProgram.programId,
         })
         .signers([gameMasterAccountKp, boardAccountKp])
-        .rpc()
-        .catch((e) => {
-          console.log(anchor.translateError(e, new Map()));
-          throw Error(e);
-        })
-        .then((txHash) => txHash);
+        .rpc();
       await confirmTx(txHash);
 
       // This line is only for test purposes to ensure the event
@@ -391,16 +436,25 @@ describe("HotPotato", () => {
   });
 
   describe("Playing", async () => {
+    const programFeePerTurn = Math.floor(
+      Math.floor((minimumTicketEntry.toNumber() * permilleProgramFee) / 1000) /
+        NumTurns
+    );
+    const returnPerTurn = Math.floor(
+      Math.floor(
+        (minimumTicketEntry.toNumber() * (1000 - permilleProgramFee)) / 1000
+      ) / NumTurns
+    );
     const amountWithoutChumpChange =
-      minimumTicketEntry.toNumber() -
-      (minimumTicketEntry.toNumber() % NumTurns);
+      NumTurns * (programFeePerTurn + returnPerTurn);
     const expectInitializedBoardSlot = (
       holder: PotatoHolder,
       player: web3.PublicKey
     ) => {
       const initializedBoardSlot = {
         player,
-        turnNumber: bigNumZero,
+        turnNumber: 0,
+        payOutsDue: 0,
         turnAmount: new anchor.BN(amountWithoutChumpChange / NumTurns),
       };
       expectBoardSlotToMatch(holder, initializedBoardSlot);
@@ -538,12 +592,13 @@ describe("HotPotato", () => {
 
         const {
           playerRequestsHotPotatoTxConfirmation: firstPlayerJoinsTxConfirmation,
-          refetchedGameAccount,
         } = await doPlayerRequestHotPotato(
           gameAccountPublicKey,
           boardAccountPublicKey,
           firstPlayerAccountKp
         );
+        const refetchedGameAccount =
+          await program.account.game.fetch(gameAccountPublicKey);
 
         const txTime = await program.provider.connection.getBlockTime(
           firstPlayerJoinsTxConfirmation.context.slot
@@ -571,11 +626,14 @@ describe("HotPotato", () => {
         );
         const firstPlayerAccountKp = new web3.Keypair();
 
-        const { refetchedGameAccount } = await doPlayerRequestHotPotato(
+        await doPlayerRequestHotPotato(
           gameAccountPublicKey,
           boardAccountPublicKey,
           firstPlayerAccountKp
         );
+
+        const refetchedGameAccount =
+          await program.account.game.fetch(gameAccountPublicKey);
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
         program.removeEventListener(gameInitializedListener);
@@ -653,10 +711,13 @@ describe("HotPotato", () => {
           await initLongGame();
         const firstPlayerAccountKp = new web3.Keypair();
 
-        const { refetchedboardAccount } = await doPlayerRequestHotPotato(
+        await doPlayerRequestHotPotato(
           gameAccountPublicKey,
           boardAccountPublicKey,
           firstPlayerAccountKp
+        );
+        const refetchedboardAccount = await program.account.board.fetch(
+          boardAccountPublicKey
         );
 
         const firstPlayerSlot = refetchedboardAccount.potatoHolders[0];
@@ -683,10 +744,13 @@ describe("HotPotato", () => {
           boardAccountPublicKey,
           firstPlayerAccountKp
         );
-        const { refetchedboardAccount } = await doPlayerRequestHotPotato(
+        await doPlayerRequestHotPotato(
           gameAccountPublicKey,
           boardAccountPublicKey,
           firstPlayerAccountKp
+        );
+        const refetchedboardAccount = await program.account.board.fetch(
+          boardAccountPublicKey
         );
 
         const firstPlayerSlot0 = refetchedboardAccount.potatoHolders[0];
@@ -846,16 +910,11 @@ describe("HotPotato", () => {
           boardAccountPublicKey,
           firstPlayerAccountKp
         );
-        const crankTxHash = await program.methods
-          .crank()
-          .accounts({
-            game: gameAccountPublicKey,
-            board: boardAccountPublicKey,
-            gameMaster: gameMasterAccountKp.publicKey,
-          })
-          .signers([gameMasterAccountKp])
-          .rpc();
-        await confirmTx(crankTxHash);
+        await doCrank(
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey
+        );
 
         await expect(
           program.methods
@@ -899,16 +958,11 @@ describe("HotPotato", () => {
           eventListenerSpy
         );
 
-        const crankTxHash = await program.methods
-          .crank()
-          .accounts({
-            game: gameAccountPublicKey,
-            board: boardAccountPublicKey,
-            gameMaster: gameMasterAccountKp.publicKey,
-          })
-          .signers([gameMasterAccountKp])
-          .rpc();
-        await confirmTx(crankTxHash);
+        await doCrank(
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey
+        );
         const refetchedGameAccount =
           await program.account.game.fetch(gameAccountPublicKey);
 
@@ -919,8 +973,112 @@ describe("HotPotato", () => {
           refetchedGameAccount.state.active?.nextCrank
         );
       });
-      it("sends SOL to first player and program fee to game master");
-      it("emits payout event");
+      it("updates player's turn and payout information", async () => {
+        const {
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+        } = await initMediumGame();
+        const firstPlayerAccountKp = new web3.Keypair();
+        await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
+        );
+        await doCrank(
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey
+        );
+        const refetchedboardAccount = await program.account.board.fetch(
+          boardAccountPublicKey
+        );
+        const firstPlayerSlot = refetchedboardAccount.potatoHolders[0];
+        expect(firstPlayerSlot.turnNumber).to.eq(1);
+        expect(firstPlayerSlot.payOutsDue).to.eq(1);
+      });
+    });
+    describe("Disburse", async () => {
+      it("checks the board matches when disbursing", async () => {
+        const { gameAccountPublicKey, gameMasterAccountKp } =
+          await initLongGame();
+        const { boardAccountPublicKey: someOtherBoardAccountPublicKey } =
+          await initLongGame();
+        await expect(
+          program.methods
+            .disburseToPotatoHolders()
+            .accounts({
+              game: gameAccountPublicKey,
+              board: someOtherBoardAccountPublicKey,
+              gameMaster: gameMasterAccountKp.publicKey,
+            })
+            .signers([gameMasterAccountKp])
+            .rpc()
+        ).to.be.rejectedWith(anchor.AnchorError, "BoardMismatch");
+      });
+      it("checks it's the correct game master", async () => {
+        const { gameAccountPublicKey, boardAccountPublicKey } =
+          await initLongGame();
+        const someOtherAccountKp = new web3.Keypair();
+        await expect(
+          program.methods
+            .disburseToPotatoHolders()
+            .accounts({
+              game: gameAccountPublicKey,
+              board: boardAccountPublicKey,
+              gameMaster: someOtherAccountKp.publicKey,
+            })
+            .signers([someOtherAccountKp])
+            .rpc()
+        ).to.be.rejectedWith(Error, "NotGameMaster");
+      });
+      it("checks each player");
+      it("sends SOL to player and program fee to game master and updates player's board", async () => {
+        const {
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+        } = await initMediumGame();
+        const firstPlayerAccountKp = new web3.Keypair();
+        const gameMasterStartingBalance =
+          await program.provider.connection.getBalance(
+            gameMasterAccountKp.publicKey
+          );
+
+        await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
+        );
+        await doCrank(
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey
+        );
+
+        const firstPlayerStartingBalanceAfterGettingHotPotato =
+          await program.provider.connection.getBalance(
+            firstPlayerAccountKp.publicKey
+          );
+
+        const gameMasterEndingBalance =
+          await program.provider.connection.getBalance(
+            gameMasterAccountKp.publicKey
+          );
+        const firstPlayerEndingBalance =
+          await program.provider.connection.getBalance(
+            firstPlayerAccountKp.publicKey
+          );
+
+        expect(gameMasterEndingBalance).to.be.eq(
+          gameMasterStartingBalance + programFeePerTurn
+        );
+        expect(firstPlayerEndingBalance).to.be.eq(
+          firstPlayerStartingBalanceAfterGettingHotPotato - programFeePerTurn
+        );
+      });
+      it("emits PlayerPayout event");
+      it("emits GameMasterPayout event");
     });
     describe("Subsequent cranks", async () => {
       it("updates next crank time");
