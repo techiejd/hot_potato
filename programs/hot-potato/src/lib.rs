@@ -244,11 +244,6 @@ mod hot_potato {
         let game = &mut ctx.accounts.game;
         let board = &mut ctx.accounts.board.load_mut()?;
         let for_game = game.to_account_info().key();
-        require_keys_eq!(
-            game.game_master,
-            ctx.accounts.game_master.key(),
-            HotPotatoError::NotGameMaster
-        );
 
         game.crank(&for_game)?;
         board.crank()?;
@@ -328,7 +323,10 @@ pub struct Crank<'info> {
     #[account(mut,
         constraint = 
         game.board == board.to_account_info().key()
-        @ HotPotatoError::BoardMismatch)]
+        @ HotPotatoError::BoardMismatch,
+        constraint = 
+        game.game_master == game_master.to_account_info().key()
+        @ HotPotatoError::NotGameMaster)]
     pub game: Account<'info, Game>,
     #[account(mut)]
     pub board: AccountLoader<'info, Board>,
