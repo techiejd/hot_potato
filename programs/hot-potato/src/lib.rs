@@ -109,10 +109,14 @@ pub struct Game {
 impl Game {
     pub const SIZE: usize = 8 + 8 + 8 + 16 + 32 + 32;
 
-    fn set_state_active_with_next_crank_given(&mut self, current_time: i64) {
+    fn set_state_active_with_next_crank_given(&mut self, current_time: i64, for_game: &Pubkey) {
         self.state = GameState::Active {
             next_crank: current_time.add(self.turn_period_length),
         };
+        emit!(GameStateChanged {
+            game: *for_game,
+            state: self.state,
+        });
     }
 
     pub fn request_hot_potato<F0, F1>(
@@ -162,7 +166,7 @@ impl Game {
 
         Ok(())
     }
-    pub fn crank(&mut self) -> Result<()> {
+    pub fn crank(&mut self, for_game: &Pubkey) -> Result<()> {
         require!(
             self.state != GameState::Pending,
             HotPotatoError::CannotCrankWhilePending
@@ -174,14 +178,14 @@ impl Game {
                     current_time.ge(&ending),
                     HotPotatoError::CrankNotAllowedBeforeStagingEnds
                 );
-                self.set_state_active_with_next_crank_given(current_time);
+                self.set_state_active_with_next_crank_given(current_time, for_game);
             }
             GameState::Active { next_crank } => {
                 require!(
                     current_time.ge(&next_crank),
                     HotPotatoError::CrankNotAllowedBeforeNextCrankTime
                 );
-                self.set_state_active_with_next_crank_given(current_time);
+                self.set_state_active_with_next_crank_given(current_time, for_game);
             }
             _ => {}
         }
@@ -222,13 +226,14 @@ mod hot_potato {
 
     pub fn crank(ctx: Context<Crank>) -> Result<()> {
         let game = &mut ctx.accounts.game;
+        let for_game = game.to_account_info().key();
         require_keys_eq!(
             game.game_master,
             ctx.accounts.game_master.key(),
             HotPotatoError::NotGameMaster
         );
 
-        game.crank()?;
+        game.crank(&for_game)?;
         Ok(())
     }
 

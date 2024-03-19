@@ -872,7 +872,53 @@ describe("HotPotato", () => {
           "CrankNotAllowedBeforeNextCrankTime"
         );
       });
-      it("emits crank event");
+      it("emits crank event", async () => {
+        const {
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+        } = await initMediumGame();
+        const firstPlayerAccountKp = new web3.Keypair();
+        await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
+        );
+        let nextCrankTimeFromEvent: anchor.BN;
+        const expectOnEvent = (e: unknown) => {
+          expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+          expect(e)
+            .to.have.property("state")
+            .and.to.have.property("active")
+            .and.to.have.property("nextCrank");
+          nextCrankTimeFromEvent = e["state"]["active"]["nextCrank"];
+        };
+        const eventListenerSpy = chai.spy(expectOnEvent);
+        const gameInitializedListener = program.addEventListener(
+          "GameStateChanged",
+          eventListenerSpy
+        );
+
+        const crankTxHash = await program.methods
+          .crank()
+          .accounts({
+            game: gameAccountPublicKey,
+            board: boardAccountPublicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+          })
+          .signers([gameMasterAccountKp])
+          .rpc();
+        await confirmTx(crankTxHash);
+        const refetchedGameAccount =
+          await program.account.game.fetch(gameAccountPublicKey);
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        program.removeEventListener(gameInitializedListener);
+        expect(eventListenerSpy).to.have.been.called();
+        expect(nextCrankTimeFromEvent).to.be.a.bignumber.that.is.eql(
+          refetchedGameAccount.state.active?.nextCrank
+        );
+      });
       it("sends SOL to first player and program fee to game master");
       it("emits payout event");
     });
