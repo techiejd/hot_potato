@@ -54,7 +54,8 @@ pub enum HotPotatoError {
     ImpossibleProgramFee,
     PlayerSlotMismatch,
     CannotDisburseWhenNotActive,
-    TriedToDisburseToNotPendingPayment
+    TriedToDisburseToNotPendingPayment,
+    CannotCrankWhenPaymentDue
 }
 
 mod utils {
@@ -116,11 +117,13 @@ impl Board {
 
     pub fn crank(&mut self) -> Result<()> {
         // From head to tail, increase pay_outs_due and turn_number by 1
-        let mut current = self.head;
-        while current != self.tail {
-            self.potato_holders[current as usize].payment_pending += 1;
-            self.potato_holders[current as usize].turn_number += 1;
-            current = (current + 1) % (utils::NONUNIQUE_POTATO_HOLDERS_MAX as u64);
+        let mut i = self.head;
+        while i != self.tail {
+            let current = &mut self.potato_holders[i as usize];
+            require_neq!(current.payment_pending, 1, HotPotatoError::CannotCrankWhenPaymentDue);
+            current.payment_pending += 1;
+            current.turn_number += 1;
+            i = (i + 1) % (utils::NONUNIQUE_POTATO_HOLDERS_MAX as u64);
         }
         Ok(())
     }

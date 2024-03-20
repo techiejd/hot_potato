@@ -199,9 +199,39 @@ describe("HotPotato", () => {
     };
   };
 
-  const getPastFirstCrankInShortGameWithMaxTxPlayers = async () => {
+  const doDisbursement = async (
+    gameAccountPublicKey: web3.PublicKey,
+    boardAccountPublicKey: web3.PublicKey,
+    gameMasterAccountKp: web3.Keypair,
+    remainingAccounts: {
+      pubkey: web3.PublicKey;
+      isSigner: boolean;
+      isWritable: boolean;
+    }[],
+    offset = 0
+  ) => {
+    const disbursementTxHash = await program.methods
+      .disburseToPotatoHolders(offset)
+      .accounts({
+        game: gameAccountPublicKey,
+        board: boardAccountPublicKey,
+        gameMaster: gameMasterAccountKp.publicKey,
+      })
+      .signers([gameMasterAccountKp])
+      .remainingAccounts(remainingAccounts)
+      .rpc();
+    const disbursementTxHashConfirmation = confirmTx(disbursementTxHash);
+    return {
+      disbursementTxHash,
+      disbursementTxHashConfirmation,
+    };
+  };
+
+  const getPastFirstCrankWithMaxTxPlayers = async (
+    initGameCallback: typeof initShortGame
+  ) => {
     const { gameAccountPublicKey, boardAccountPublicKey, gameMasterAccountKp } =
-      await initShortGame();
+      await initGameCallback();
     const accounts = await Promise.all(
       Array.from(
         { length: MaxNumOfRemainingAccountsDoableInOneDisbursementTx },
@@ -229,6 +259,36 @@ describe("HotPotato", () => {
       accounts,
     };
   };
+
+  const getDisbursableStateWithMaxTxPlayers = async (
+    initGameCallback: typeof initShortGame
+  ) => {
+    const { gameAccountPublicKey, boardAccountPublicKey, gameMasterAccountKp } =
+      await getPastFirstCrankWithMaxTxPlayers(initGameCallback);
+    const fetchedBoardAccount = await program.account.board.fetch(
+      boardAccountPublicKey
+    );
+    const firstPlayersAccounts = fetchedBoardAccount.potatoHolders.slice(
+      0,
+      MaxNumOfRemainingAccountsDoableInOneDisbursementTx
+    );
+    const remainingAccounts = firstPlayersAccounts.map((holder) => ({
+      pubkey: holder.player,
+      isSigner: false,
+      isWritable: true,
+    }));
+    return {
+      gameAccountPublicKey,
+      boardAccountPublicKey,
+      gameMasterAccountKp,
+      remainingAccounts,
+      firstPlayersAccounts,
+      fetchedBoardAccount,
+    };
+  };
+
+  const getDisbursableStateWithMaxTxPlayersInShortGame = () =>
+    getDisbursableStateWithMaxTxPlayers(initShortGame);
 
   describe("Fails initializing", async () => {
     it("fails initializing if seed doesn't include only gameMaster and board", async () => {
@@ -1032,49 +1092,18 @@ describe("HotPotato", () => {
       });
     });
     describe("Disburse", async () => {
-      const getDisbursableState = async () => {
-        const {
-          gameAccountPublicKey,
-          boardAccountPublicKey,
-          gameMasterAccountKp,
-        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
-        const fetchedBoardAccount = await program.account.board.fetch(
-          boardAccountPublicKey
-        );
-        const firstPlayersAccounts = fetchedBoardAccount.potatoHolders.slice(
-          0,
-          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
-        );
-        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
-          pubkey: holder.player,
-          isSigner: false,
-          isWritable: true,
-        }));
-        return {
-          gameAccountPublicKey,
-          boardAccountPublicKey,
-          gameMasterAccountKp,
-          remainingAccounts,
-          firstPlayersAccounts,
-          fetchedBoardAccount,
-        };
-      };
-
       it("checks the board matches when disbursing", async () => {
         const { gameAccountPublicKey, gameMasterAccountKp } =
           await initLongGame();
         const { boardAccountPublicKey: someOtherBoardAccountPublicKey } =
           await initLongGame();
         await expect(
-          program.methods
-            .disburseToPotatoHolders(0)
-            .accounts({
-              game: gameAccountPublicKey,
-              board: someOtherBoardAccountPublicKey,
-              gameMaster: gameMasterAccountKp.publicKey,
-            })
-            .signers([gameMasterAccountKp])
-            .rpc()
+          doDisbursement(
+            gameAccountPublicKey,
+            someOtherBoardAccountPublicKey,
+            gameMasterAccountKp,
+            []
+          )
         ).to.be.rejectedWith(anchor.AnchorError, "BoardMismatch");
       });
       it("checks it's the correct game master", async () => {
@@ -1082,15 +1111,12 @@ describe("HotPotato", () => {
           await initLongGame();
         const someOtherAccountKp = new web3.Keypair();
         await expect(
-          program.methods
-            .disburseToPotatoHolders(0)
-            .accounts({
-              game: gameAccountPublicKey,
-              board: boardAccountPublicKey,
-              gameMaster: someOtherAccountKp.publicKey,
-            })
-            .signers([someOtherAccountKp])
-            .rpc()
+          doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            someOtherAccountKp,
+            []
+          )
         ).to.be.rejectedWith(Error, "NotGameMaster");
       });
       it("checks each player in order", async () => {
@@ -1099,32 +1125,24 @@ describe("HotPotato", () => {
           boardAccountPublicKey,
           gameMasterAccountKp,
           remainingAccounts,
-        } = await getDisbursableState();
+        } = await getDisbursableStateWithMaxTxPlayersInShortGame();
         const allButLastTwo = remainingAccounts.slice(0, -2);
         const lastTwo = remainingAccounts.slice(-2);
         await expect(
-          program.methods
-            .disburseToPotatoHolders(0)
-            .accounts({
-              game: gameAccountPublicKey,
-              board: boardAccountPublicKey,
-              gameMaster: gameMasterAccountKp.publicKey,
-            })
-            .signers([gameMasterAccountKp])
-            .remainingAccounts([...allButLastTwo, lastTwo[1], lastTwo[0]])
-            .rpc()
+          doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [...allButLastTwo, lastTwo[1], lastTwo[0]]
+          )
         ).to.be.rejectedWith(anchor.AnchorError, "PlayerSlotMismatch");
         await expect(
-          program.methods
-            .disburseToPotatoHolders(0)
-            .accounts({
-              game: gameAccountPublicKey,
-              board: boardAccountPublicKey,
-              gameMaster: gameMasterAccountKp.publicKey,
-            })
-            .signers([gameMasterAccountKp])
-            .remainingAccounts(remainingAccounts)
-            .rpc()
+          doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            remainingAccounts
+          )
         ).to.eventually.be.ok;
       });
       it(`sends SOL to players and their program fee to game master
@@ -1134,7 +1152,7 @@ describe("HotPotato", () => {
           boardAccountPublicKey,
           gameMasterAccountKp,
           remainingAccounts,
-        } = await getDisbursableState();
+        } = await getDisbursableStateWithMaxTxPlayersInShortGame();
 
         const gameMasterStartingBalance =
           await program.provider.connection.getBalance(
@@ -1146,17 +1164,12 @@ describe("HotPotato", () => {
           )
         );
 
-        const txHash = await program.methods
-          .disburseToPotatoHolders(0)
-          .accounts({
-            game: gameAccountPublicKey,
-            board: boardAccountPublicKey,
-            gameMaster: gameMasterAccountKp.publicKey,
-          })
-          .signers([gameMasterAccountKp])
-          .remainingAccounts(remainingAccounts)
-          .rpc();
-        confirmTx(txHash);
+        await doDisbursement(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts
+        );
 
         const gameMasterEndingBalance =
           await program.provider.connection.getBalance(
@@ -1196,7 +1209,7 @@ describe("HotPotato", () => {
           boardAccountPublicKey,
           gameMasterAccountKp,
           remainingAccounts,
-        } = await getDisbursableState();
+        } = await getDisbursableStateWithMaxTxPlayersInShortGame();
         let i = 0;
         const expectOnEvent = (e: unknown) => {
           expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
@@ -1215,16 +1228,12 @@ describe("HotPotato", () => {
           eventListenerSpy
         );
 
-        await program.methods
-          .disburseToPotatoHolders(0)
-          .accounts({
-            game: gameAccountPublicKey,
-            board: boardAccountPublicKey,
-            gameMaster: gameMasterAccountKp.publicKey,
-          })
-          .signers([gameMasterAccountKp])
-          .remainingAccounts(remainingAccounts)
-          .rpc();
+        await doDisbursement(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts
+        );
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
         program.removeEventListener(gameInitializedListener);
@@ -1238,7 +1247,7 @@ describe("HotPotato", () => {
           boardAccountPublicKey,
           gameMasterAccountKp,
           remainingAccounts,
-        } = await getDisbursableState();
+        } = await getDisbursableStateWithMaxTxPlayersInShortGame();
         const expectOnEvent = (e: unknown) => {
           expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
           expect(e)
@@ -1256,16 +1265,12 @@ describe("HotPotato", () => {
           eventListenerSpy
         );
 
-        await program.methods
-          .disburseToPotatoHolders(0)
-          .accounts({
-            game: gameAccountPublicKey,
-            board: boardAccountPublicKey,
-            gameMaster: gameMasterAccountKp.publicKey,
-          })
-          .signers([gameMasterAccountKp])
-          .remainingAccounts(remainingAccounts)
-          .rpc();
+        await doDisbursement(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts
+        );
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
         program.removeEventListener(gameInitializedListener);
@@ -1278,15 +1283,12 @@ describe("HotPotato", () => {
           gameMasterAccountKp,
         } = await initLongGame();
         await expect(
-          program.methods
-            .disburseToPotatoHolders(0)
-            .accounts({
-              game: gameAccountPublicKey,
-              board: boardAccountPublicKey,
-              gameMaster: gameMasterAccountKp.publicKey,
-            })
-            .signers([gameMasterAccountKp])
-            .rpc()
+          doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            []
+          )
         ).to.be.rejectedWith(anchor.AnchorError, "CannotDisburseWhenNotActive");
       });
       it("fails if a player does not have a pending payment", async () => {
@@ -1295,30 +1297,22 @@ describe("HotPotato", () => {
           boardAccountPublicKey,
           gameMasterAccountKp,
           remainingAccounts,
-        } = await getDisbursableState();
+        } = await getDisbursableStateWithMaxTxPlayersInShortGame();
 
-        await program.methods
-          .disburseToPotatoHolders(0)
-          .accounts({
-            game: gameAccountPublicKey,
-            board: boardAccountPublicKey,
-            gameMaster: gameMasterAccountKp.publicKey,
-          })
-          .signers([gameMasterAccountKp])
-          .remainingAccounts(remainingAccounts)
-          .rpc();
+        await doDisbursement(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts
+        );
 
         await expect(
-          program.methods
-            .disburseToPotatoHolders(0)
-            .accounts({
-              game: gameAccountPublicKey,
-              board: boardAccountPublicKey,
-              gameMaster: gameMasterAccountKp.publicKey,
-            })
-            .signers([gameMasterAccountKp])
-            .remainingAccounts(remainingAccounts)
-            .rpc()
+          doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            remainingAccounts
+          )
         ).to.be.rejectedWith(
           anchor.AnchorError,
           "TriedToDisburseToNotPendingPayment"
@@ -1326,9 +1320,128 @@ describe("HotPotato", () => {
       });
     });
     describe("Subsequent cranks and disbursement", async () => {
-      it("fails crank if payment is due");
-      it("updates next crank time with each crank");
-      it("emits crank event for subsequent crank");
+      const getDisbursableStateWithMaxTxPlayersInOneSecGame = () =>
+        getDisbursableStateWithMaxTxPlayers(() =>
+          initGame(bigNumZero, new anchor.BN(1) /* 1 second */)
+        );
+      it("fails crank if payment is due", async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+        } = await getDisbursableStateWithMaxTxPlayersInShortGame();
+
+        await expect(
+          program.methods
+            .crank()
+            .accounts({
+              game: gameAccountPublicKey,
+              board: boardAccountPublicKey,
+              gameMaster: gameMasterAccountKp.publicKey,
+            })
+            .signers([gameMasterAccountKp])
+            .rpc()
+        ).to.be.rejectedWith(anchor.AnchorError, "CannotCrankWhenPaymentDue");
+      });
+      it("fails crank if before next crank time", async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts,
+        } = await getDisbursableStateWithMaxTxPlayers(() => initMediumGame());
+        await doDisbursement(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts
+        );
+
+        await expect(
+          doCrank(
+            gameMasterAccountKp,
+            gameAccountPublicKey,
+            boardAccountPublicKey
+          )
+        ).to.be.rejectedWith(
+          anchor.AnchorError,
+          "CrankNotAllowedBeforeNextCrankTime"
+        );
+      });
+      it("updates next crank time with each crank", async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts,
+        } = await getDisbursableStateWithMaxTxPlayersInOneSecGame();
+        await doDisbursement(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const { crankTxConfirmation } = await doCrank(
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey
+        );
+
+        const txTime = await program.provider.connection.getBlockTime(
+          crankTxConfirmation.context.slot
+        );
+        const fetchedGameAccount =
+          await program.account.game.fetch(gameAccountPublicKey);
+        expect(
+          fetchedGameAccount.state.active?.nextCrank
+        ).to.be.a.bignumber.that.is.eq(new anchor.BN(txTime + 1));
+      });
+      it("emits crank event for subsequent crank", async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts,
+        } = await getDisbursableStateWithMaxTxPlayersInOneSecGame();
+        await doDisbursement(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts
+        );
+
+        let nextCrankTimeFromEvent: anchor.BN;
+        const expectOnEvent = (e: unknown) => {
+          expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+          expect(e)
+            .to.have.property("state")
+            .and.to.have.property("active")
+            .and.to.have.property("nextCrank");
+          nextCrankTimeFromEvent = e["state"]["active"]["nextCrank"];
+        };
+        const eventListenerSpy = chai.spy(expectOnEvent);
+        const gameInitializedListener = program.addEventListener(
+          "GameStateChanged",
+          eventListenerSpy
+        );
+
+        await doCrank(
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        program.removeEventListener(gameInitializedListener);
+        expect(eventListenerSpy).to.have.been.called();
+        const fetchedGameAccount =
+          await program.account.game.fetch(gameAccountPublicKey);
+        expect(nextCrankTimeFromEvent).to.be.a.bignumber.that.is.eql(
+          fetchedGameAccount.state.active?.nextCrank
+        );
+      });
     });
     describe("Affiliate link", async () => {
       it("saves affiliate");
