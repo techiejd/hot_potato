@@ -52,7 +52,9 @@ pub enum HotPotatoError {
     CrankNotAllowedBeforeStagingEnds,
     CrankNotAllowedBeforeNextCrankTime,
     ImpossibleProgramFee,
-    PlayerSlotMismatch
+    PlayerSlotMismatch,
+    CannotDisburseWhenNotActive,
+    TriedToDisburseToNotPendingPayment
 }
 
 mod utils {
@@ -134,6 +136,9 @@ impl Board {
                 acc.key(),
                 HotPotatoError::PlayerSlotMismatch
             );
+            require_gt!(potato_holding_information.payment_pending,
+                0, 
+                HotPotatoError::TriedToDisburseToNotPendingPayment);
             let fee = (potato_holding_information.turn_amount * (*fee as u64)) / 1000;
             let for_potato_holder = potato_holding_information.turn_amount - fee;
             acc.add_lamports(for_potato_holder)?;
@@ -343,6 +348,10 @@ mod hot_potato {
 
     pub fn disburse_to_potato_holders(ctx: Context<DisburseToPotatoHolders>, offset: u16) -> Result<()> {
         let game = &mut ctx.accounts.game;
+        match game.state {
+            GameState::Active { .. } => {}
+            _ => return err!(HotPotatoError::CannotDisburseWhenNotActive),
+        }
         let board = &mut ctx.accounts.board.load_mut()?;
         let (from_game, for_game_master) = board.process_chunk_for_payment(&ctx.remaining_accounts, &offset, &game.permille_program_fee)?;
         ctx.accounts.game_master.add_lamports(for_game_master)?;

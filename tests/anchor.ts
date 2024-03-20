@@ -1032,6 +1032,34 @@ describe("HotPotato", () => {
       });
     });
     describe("Disburse", async () => {
+      const getDisbursableState = async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
+        const fetchedBoardAccount = await program.account.board.fetch(
+          boardAccountPublicKey
+        );
+        const firstPlayersAccounts = fetchedBoardAccount.potatoHolders.slice(
+          0,
+          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
+        );
+        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
+          pubkey: holder.player,
+          isSigner: false,
+          isWritable: true,
+        }));
+        return {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts,
+          firstPlayersAccounts,
+          fetchedBoardAccount,
+        };
+      };
+
       it("checks the board matches when disbursing", async () => {
         const { gameAccountPublicKey, gameMasterAccountKp } =
           await initLongGame();
@@ -1070,19 +1098,8 @@ describe("HotPotato", () => {
           gameAccountPublicKey,
           boardAccountPublicKey,
           gameMasterAccountKp,
-        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
-        const refetchedBoardAccount = await program.account.board.fetch(
-          boardAccountPublicKey
-        );
-        const firstPlayersAccounts = refetchedBoardAccount.potatoHolders.slice(
-          0,
-          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
-        );
-        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
-          pubkey: holder.player,
-          isSigner: false,
-          isWritable: true,
-        }));
+          remainingAccounts,
+        } = await getDisbursableState();
         const allButLastTwo = remainingAccounts.slice(0, -2);
         const lastTwo = remainingAccounts.slice(-2);
         await expect(
@@ -1116,24 +1133,13 @@ describe("HotPotato", () => {
           gameAccountPublicKey,
           boardAccountPublicKey,
           gameMasterAccountKp,
-        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
+          remainingAccounts,
+        } = await getDisbursableState();
+
         const gameMasterStartingBalance =
           await program.provider.connection.getBalance(
             gameMasterAccountKp.publicKey
           );
-        const fetchedBoardAccount = await program.account.board.fetch(
-          boardAccountPublicKey
-        );
-        const firstPlayersAccounts = fetchedBoardAccount.potatoHolders.slice(
-          0,
-          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
-        );
-        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
-          pubkey: holder.player,
-          isSigner: false,
-          isWritable: true,
-        }));
-
         const accountStartingBalances = await Promise.all(
           remainingAccounts.map((acc) =>
             program.provider.connection.getBalance(acc.pubkey)
@@ -1189,19 +1195,8 @@ describe("HotPotato", () => {
           gameAccountPublicKey,
           boardAccountPublicKey,
           gameMasterAccountKp,
-        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
-        const fetchedBoardAccount = await program.account.board.fetch(
-          boardAccountPublicKey
-        );
-        const firstPlayersAccounts = fetchedBoardAccount.potatoHolders.slice(
-          0,
-          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
-        );
-        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
-          pubkey: holder.player,
-          isSigner: false,
-          isWritable: true,
-        }));
+          remainingAccounts,
+        } = await getDisbursableState();
         let i = 0;
         const expectOnEvent = (e: unknown) => {
           expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
@@ -1242,19 +1237,8 @@ describe("HotPotato", () => {
           gameAccountPublicKey,
           boardAccountPublicKey,
           gameMasterAccountKp,
-        } = await getPastFirstCrankInShortGameWithMaxTxPlayers();
-        const fetchedBoardAccount = await program.account.board.fetch(
-          boardAccountPublicKey
-        );
-        const firstPlayersAccounts = fetchedBoardAccount.potatoHolders.slice(
-          0,
-          MaxNumOfRemainingAccountsDoableInOneDisbursementTx
-        );
-        const remainingAccounts = firstPlayersAccounts.map((holder) => ({
-          pubkey: holder.player,
-          isSigner: false,
-          isWritable: true,
-        }));
+          remainingAccounts,
+        } = await getDisbursableState();
         const expectOnEvent = (e: unknown) => {
           expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
           expect(e)
@@ -1281,21 +1265,70 @@ describe("HotPotato", () => {
           })
           .signers([gameMasterAccountKp])
           .remainingAccounts(remainingAccounts)
-          .rpc()
-          .catch((e) => {
-            console.log(e);
-            throw e;
-          });
+          .rpc();
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
         program.removeEventListener(gameInitializedListener);
         expect(eventListenerSpy).to.have.been.called();
       });
+      it("fails if not in active state", async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+        } = await initLongGame();
+        await expect(
+          program.methods
+            .disburseToPotatoHolders(0)
+            .accounts({
+              game: gameAccountPublicKey,
+              board: boardAccountPublicKey,
+              gameMaster: gameMasterAccountKp.publicKey,
+            })
+            .signers([gameMasterAccountKp])
+            .rpc()
+        ).to.be.rejectedWith(anchor.AnchorError, "CannotDisburseWhenNotActive");
+      });
+      it("fails if a player does not have a pending payment", async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          remainingAccounts,
+        } = await getDisbursableState();
+
+        await program.methods
+          .disburseToPotatoHolders(0)
+          .accounts({
+            game: gameAccountPublicKey,
+            board: boardAccountPublicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+          })
+          .signers([gameMasterAccountKp])
+          .remainingAccounts(remainingAccounts)
+          .rpc();
+
+        await expect(
+          program.methods
+            .disburseToPotatoHolders(0)
+            .accounts({
+              game: gameAccountPublicKey,
+              board: boardAccountPublicKey,
+              gameMaster: gameMasterAccountKp.publicKey,
+            })
+            .signers([gameMasterAccountKp])
+            .remainingAccounts(remainingAccounts)
+            .rpc()
+        ).to.be.rejectedWith(
+          anchor.AnchorError,
+          "TriedToDisburseToNotPendingPayment"
+        );
+      });
     });
     describe("Subsequent cranks and disbursement", async () => {
-      it("fails if payment is due");
-      it("updates next crank time");
-      it("emits crank event");
+      it("fails crank if payment is due");
+      it("updates next crank time with each crank");
+      it("emits crank event for subsequent crank");
     });
     describe("Affiliate link", async () => {
       it("saves affiliate");
@@ -1304,8 +1337,8 @@ describe("HotPotato", () => {
   });
 
   describe("Finishing", () => {
-    it("changes state to closing");
-    it("emits closing event");
+    it("changes state to closed when we run out of money in the pot");
+    it("emits closed event");
     it("it does not allow new players to join");
     it("allows for game master to take out the game master money");
   });
