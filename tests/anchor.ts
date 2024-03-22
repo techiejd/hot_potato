@@ -1,4 +1,3 @@
-import assert from "assert";
 import * as web3 from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import type { HotPotato } from "../target/types/hot_potato";
@@ -16,12 +15,13 @@ describe("HotPotato", () => {
   const oneHour = new anchor.BN(3600); // seconds
   const bigNumZero = new anchor.BN(0);
   const minimumTicketEntry = new anchor.BN(web3.LAMPORTS_PER_SOL / 2);
-  const NumTurns = 150;
+  const TicketEntrySplit = 100;
   const MaxNumOfRemainingAccountsDoableInOneDisbursementTx = 25;
   anchor.setProvider(anchor.AnchorProvider.env());
-  type GameAccount = Awaited<ReturnType<typeof program.account.game.fetch>>;
-  type BoardAccount = Awaited<ReturnType<typeof program.account.board.fetch>>;
-  type PotatoHolder = BoardAccount["potatoHolders"][number];
+  type GameAccount = anchor.IdlAccounts<HotPotato>["game"];
+  type BoardAccount = anchor.IdlAccounts<HotPotato>["board"];
+  type PotatoHoldingInformation =
+    anchor.IdlTypes<HotPotato>["PotatoHoldingInformation"];
 
   const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
   const confirmTx = async (txHash: string) => {
@@ -64,8 +64,8 @@ describe("HotPotato", () => {
     return boardAccountKp;
   };
   const expectBoardSlotToMatch = (
-    holder: PotatoHolder,
-    expected: PotatoHolder
+    holder: PotatoHoldingInformation,
+    expected: PotatoHoldingInformation
   ) => {
     expect(holder).to.have.property("player").and.to.eql(expected.player);
     expect(holder)
@@ -78,7 +78,7 @@ describe("HotPotato", () => {
       .to.have.property("turnAmount")
       .and.to.be.a.bignumber.that.is.eq(expected.turnAmount);
   };
-  const expectEmptyBoardSlot = (holder: PotatoHolder) => {
+  const expectEmptyBoardSlot = (holder: PotatoHoldingInformation) => {
     const emptyBoardSlot = {
       player: web3.SystemProgram.programId,
       turnNumber: 0,
@@ -119,12 +119,7 @@ describe("HotPotato", () => {
         systemProgram: web3.SystemProgram.programId,
       })
       .signers([gameMasterAccountKp, boardAccountKp])
-      .rpc()
-      .catch((e) => {
-        console.log(anchor.translateError(e, new Map()));
-        throw Error(e);
-      })
-      .then((txHash) => txHash);
+      .rpc();
     await confirmTx(txHash);
     const gameAccount = await program.account.game.fetch(gameAccountPublicKey);
     const boardAccount = await program.account.board.fetch(
@@ -163,12 +158,7 @@ describe("HotPotato", () => {
         systemProgram: web3.SystemProgram.programId,
       })
       .signers([playerAccountKp])
-      .rpc()
-      .catch((e) => {
-        console.log(anchor.translateError(e, new Map()));
-        throw Error(e);
-      })
-      .then((txHash) => txHash);
+      .rpc();
     const playerRequestsHotPotatoTxConfirmation = await confirmTx(
       playerRequestsHotPotatoTxHash
     );
@@ -220,7 +210,7 @@ describe("HotPotato", () => {
       .signers([gameMasterAccountKp])
       .remainingAccounts(remainingAccounts)
       .rpc();
-    const disbursementTxHashConfirmation = confirmTx(disbursementTxHash);
+    const disbursementTxHashConfirmation = await confirmTx(disbursementTxHash);
     return {
       disbursementTxHash,
       disbursementTxHashConfirmation,
@@ -452,7 +442,7 @@ describe("HotPotato", () => {
     });
 
     it("has game master", () =>
-      assert(gameMasterAccountKp.publicKey.equals(gameAccount.gameMaster)));
+      expect(gameAccount.gameMaster).to.eql(gameMasterAccountKp.publicKey));
     it("has status is pending", () =>
       expect(gameAccount.state).to.eql({ pending: {} }));
     it("has a game board", () =>
@@ -529,26 +519,27 @@ describe("HotPotato", () => {
 
   describe("Playing", async () => {
     const programFeePerTurn = Math.floor(
-      (Math.floor(minimumTicketEntry.toNumber() / NumTurns) *
+      (Math.floor(minimumTicketEntry.toNumber() / TicketEntrySplit) *
         permilleProgramFee) /
         1000
     );
     const returnPerTurn = Math.floor(
       Math.floor(
-        (minimumTicketEntry.toNumber() * (1000 - permilleProgramFee)) / NumTurns
+        (minimumTicketEntry.toNumber() * (1000 - permilleProgramFee)) /
+          TicketEntrySplit
       ) / 1000
     );
     const amountWithoutChumpChange =
-      NumTurns * (programFeePerTurn + returnPerTurn);
+      TicketEntrySplit * (programFeePerTurn + returnPerTurn);
     const expectInitializedBoardSlot = (
-      holder: PotatoHolder,
+      holder: PotatoHoldingInformation,
       player: web3.PublicKey
     ) => {
       const initializedBoardSlot = {
         player,
         turnNumber: 0,
         paymentPending: 0,
-        turnAmount: new anchor.BN(amountWithoutChumpChange / NumTurns),
+        turnAmount: new anchor.BN(amountWithoutChumpChange / TicketEntrySplit),
       };
       expectBoardSlotToMatch(holder, initializedBoardSlot);
     };
@@ -747,12 +738,13 @@ describe("HotPotato", () => {
             firstPlayerAccountKp.publicKey
           );
 
-        await doPlayerRequestHotPotato(
-          gameAccountPublicKey,
-          boardAccountPublicKey,
-          firstPlayerAccountKp,
-          true
-        );
+        const { playerRequestsHotPotatoTxHash } =
+          await doPlayerRequestHotPotato(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            firstPlayerAccountKp,
+            true
+          );
         const gameAccountEndingBalance =
           await program.provider.connection.getBalance(gameAccountPublicKey);
         const firstPlayerEndingBalance =
@@ -1146,7 +1138,7 @@ describe("HotPotato", () => {
         ).to.eventually.be.ok;
       });
       it(`sends SOL to players and their program fee to game master
-            and updates players' board`, async () => {
+            and updates players' board and game pot`, async () => {
         const {
           gameAccountPublicKey,
           boardAccountPublicKey,
@@ -1154,6 +1146,9 @@ describe("HotPotato", () => {
           remainingAccounts,
         } = await getDisbursableStateWithMaxTxPlayersInShortGame();
 
+        const gameStartingPot = (
+          await program.account.game.fetch(gameAccountPublicKey)
+        ).pot;
         const gameMasterStartingBalance =
           await program.provider.connection.getBalance(
             gameMasterAccountKp.publicKey
@@ -1180,6 +1175,12 @@ describe("HotPotato", () => {
             program.provider.connection.getBalance(account.pubkey)
           )
         );
+        const gameEndingPot = (
+          await program.account.game.fetch(gameAccountPublicKey)
+        ).pot;
+        const refetchedBoardAccount = await program.account.board.fetch(
+          boardAccountPublicKey
+        );
         accountEndingBalances.every((endingBalance, i) => {
           expect(endingBalance).to.be.eq(
             accountStartingBalances[i] + returnPerTurn
@@ -1191,10 +1192,6 @@ describe("HotPotato", () => {
             programFeePerTurn *
               MaxNumOfRemainingAccountsDoableInOneDisbursementTx
         );
-
-        const refetchedBoardAccount = await program.account.board.fetch(
-          boardAccountPublicKey
-        );
         refetchedBoardAccount.potatoHolders
           .slice(0, MaxNumOfRemainingAccountsDoableInOneDisbursementTx)
           .every((holder) => {
@@ -1202,6 +1199,13 @@ describe("HotPotato", () => {
             expect(holder.paymentPending).to.eq(0);
             return true;
           });
+        expect(gameEndingPot).to.be.a.bignumber.that.is.eq(
+          gameStartingPot.sub(
+            new anchor.BN(
+              remainingAccounts.length * (returnPerTurn + programFeePerTurn)
+            )
+          )
+        );
       });
       it("emits PlayerPayout event", async () => {
         const {
@@ -1321,8 +1325,8 @@ describe("HotPotato", () => {
     });
     describe("Subsequent cranks and disbursement", async () => {
       const getDisbursableStateWithMaxTxPlayersInOneSecGame = () =>
-        getDisbursableStateWithMaxTxPlayers(() =>
-          initGame(bigNumZero, new anchor.BN(1) /* 1 second */)
+        getDisbursableStateWithMaxTxPlayers(
+          () => initGame(bigNumZero, new anchor.BN(1)) // 1 second
         );
       it("fails crank if payment is due", async () => {
         const {
@@ -1442,22 +1446,192 @@ describe("HotPotato", () => {
           fetchedGameAccount.state.active?.nextCrank
         );
       });
+      describe("Finishing", () => {
+        const getTo101thCrankWithOnePlayer = async () => {
+          const {
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+          } = await initShortGame();
+          const firstPlayerAccountKp = new web3.Keypair();
+          await doPlayerRequestHotPotato(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            firstPlayerAccountKp
+          );
+          await doCrank(
+            gameMasterAccountKp,
+            gameAccountPublicKey,
+            boardAccountPublicKey
+          );
+          console.log("cranked once");
+          for (let i = 0; i < 100; i++) {
+            await doDisbursement(
+              gameAccountPublicKey,
+              boardAccountPublicKey,
+              gameMasterAccountKp,
+              [
+                {
+                  pubkey: firstPlayerAccountKp.publicKey,
+                  isSigner: false,
+                  isWritable: true,
+                },
+              ]
+            );
+            await doCrank(
+              gameMasterAccountKp,
+              gameAccountPublicKey,
+              boardAccountPublicKey
+            );
+            console.log(`cranked ${i + 2} times out of 101`);
+          }
+          return {
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            firstPlayerAccountKp,
+          };
+        };
+        it("stops disbursements when we run out of money in the pot", async () => {
+          const {
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            firstPlayerAccountKp,
+          } = await getTo101thCrankWithOnePlayer();
+          const gameMasterStartingBalance =
+            await program.provider.connection.getBalance(
+              gameMasterAccountKp.publicKey
+            );
+          const firstPlayerStartingBalance =
+            await program.provider.connection.getBalance(
+              firstPlayerAccountKp.publicKey
+            );
+
+          await doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [
+              {
+                pubkey: firstPlayerAccountKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+            ]
+          );
+
+          expect(
+            await program.provider.connection.getBalance(
+              gameMasterAccountKp.publicKey
+            )
+          ).to.be.eq(gameMasterStartingBalance);
+
+          expect(
+            await program.provider.connection.getBalance(
+              firstPlayerAccountKp.publicKey
+            )
+          ).to.be.eq(firstPlayerStartingBalance);
+        });
+        it("changes state to closed when we run out of money in the pot", async () => {
+          const {
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            firstPlayerAccountKp,
+          } = await getTo101thCrankWithOnePlayer();
+          await doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [
+              {
+                pubkey: firstPlayerAccountKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+            ]
+          );
+          const fetchedGameAccount =
+            await program.account.game.fetch(gameAccountPublicKey);
+          expect(fetchedGameAccount.state).to.eql({ closed: {} });
+        });
+        it("emits closed event", async () => {
+          const {
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            firstPlayerAccountKp,
+          } = await getTo101thCrankWithOnePlayer();
+          const expectOnEvent = (e: unknown) => {
+            expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+            expect(e).to.have.property("state").and.to.eql({ closed: {} });
+          };
+          const eventListenerSpy = chai.spy(expectOnEvent);
+          const gameInitializedListener = program.addEventListener(
+            "GameStateChanged",
+            eventListenerSpy
+          );
+          await doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [
+              {
+                pubkey: firstPlayerAccountKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+            ]
+          );
+
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          program.removeEventListener(gameInitializedListener);
+          expect(eventListenerSpy).to.have.been.called();
+        });
+        it("it does not allow new players to join", async () => {
+          const {
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            firstPlayerAccountKp,
+          } = await getTo101thCrankWithOnePlayer();
+          await doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [
+              {
+                pubkey: firstPlayerAccountKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+            ]
+          );
+          const someOtherAccountKp = new web3.Keypair();
+          await expect(
+            doPlayerRequestHotPotato(
+              gameAccountPublicKey,
+              boardAccountPublicKey,
+              someOtherAccountKp
+            )
+          ).to.be.rejectedWith(Error, "GameClosed");
+        });
+        it("allows for game master to take out the game master money");
+      });
+      it("disburses upto max number of turns");
+      it("reliquinshes potato holder spot after max number of turns");
     });
     describe("Affiliate link", async () => {
       it("saves affiliate");
       it("it splits program fee with affiliate link");
     });
   });
-
-  describe("Finishing", () => {
-    it("changes state to closed when we run out of money in the pot");
-    it("emits closed event");
-    it("it does not allow new players to join");
-    it("allows for game master to take out the game master money");
+  describe("Game master taking money out", async () => {
+    it("Only allows game master to take money");
+    it("Checks that game and board match");
+    it(
+      "Does not allow for game master to take money out before game is closed"
+    );
   });
-  it(
-    `gives up to 150% - (program fee)% throughout the game, 
-    pops out the winner, allows up to 10_000 to join and then closes 
-    when no more money`
-  );
 });

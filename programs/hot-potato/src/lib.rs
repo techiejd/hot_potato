@@ -55,11 +55,12 @@ pub enum HotPotatoError {
     PlayerSlotMismatch,
     CannotDisburseWhenNotActive,
     TriedToDisburseToNotPendingPayment,
-    CannotCrankWhenPaymentDue
+    CannotCrankWhenPaymentDue,
+    GameClosed,
 }
 
 mod utils {
-    pub const NUM_TURNS: u64 = 150;
+    pub const TICKET_ENTRY_SPLIT: u64 = 100;
     pub const NONUNIQUE_POTATO_HOLDERS_MAX: u16 = 10_000;
 }
 
@@ -70,13 +71,7 @@ pub enum GameState {
     Active {
         next_crank: i64,
     },
-    /*
-    Closed {
-        holding_potatoes: [Pubkey],
-        holding_stars: [PubKey],
-        end_time: u64,
-    },
-     */
+    Closed
 }
 
 #[derive(
@@ -128,10 +123,11 @@ impl Board {
         Ok(())
     }
 
-    pub fn process_chunk_for_payment<'info>(&mut self, chunk: &[AccountInfo<'info>], offset: &u16, fee: &u16) -> Result<(u64, u64)> {
+    pub fn process_chunk_for_payment<'info>(&mut self, chunk: &[AccountInfo<'info>], offset: &u16, fee: &u16, mut pot: u64) -> Result<(u64, u64, u64, bool)> {
         // Since this board exists in a different account, it's better to process the chunk here.
         let mut total_paid = 0u64;
         let mut total_fee = 0u64;
+        let mut overdrawn = false;
         for (i, acc) in chunk.iter().enumerate() {
             let potato_holding_information = &mut self.potato_holders[(((*offset) + i as u16) % utils::NONUNIQUE_POTATO_HOLDERS_MAX) as usize];
             require_eq!(
@@ -142,8 +138,13 @@ impl Board {
             require_gt!(potato_holding_information.payment_pending,
                 0, 
                 HotPotatoError::TriedToDisburseToNotPendingPayment);
-            let fee = (potato_holding_information.turn_amount * (*fee as u64)) / 1000;
-            let for_potato_holder = potato_holding_information.turn_amount - fee;
+            overdrawn = potato_holding_information.turn_amount > pot;
+            let full_fee = (potato_holding_information.turn_amount * (*fee as u64)) / 1000;
+            let fee_paid = if overdrawn { full_fee.min(pot) } else { full_fee };
+            pot -= fee_paid;
+            let full_return = potato_holding_information.turn_amount - fee_paid;
+            let for_potato_holder = if overdrawn {full_return.min(pot)} else {full_return};
+            pot -= for_potato_holder;
             acc.add_lamports(for_potato_holder)?;
             potato_holding_information.payment_pending = 0;
             emit!(PotatoHolderPaid {
@@ -152,15 +153,19 @@ impl Board {
                 amount: for_potato_holder,
                 turn: potato_holding_information.turn_number,
             });
-            total_paid += potato_holding_information.turn_amount;
-            total_fee += fee;
+            total_paid += for_potato_holder + fee_paid;
+            total_fee += fee_paid;
+            if overdrawn {
+                break;
+            }
         }
-        Ok((total_paid, total_fee))
+        Ok((total_paid, total_fee, pot, overdrawn))
     }
 }
 
 #[account]
 pub struct Game {
+    pub pot: u64,                   // 8 bytes
     pub staging_period_length: i64, // 8 bytes
     pub turn_period_length: i64,    // 8 bytes
     pub minimum_ticket_entry: u64,  // 8 bytes
@@ -197,11 +202,12 @@ impl Game {
     {
         let give_player_hot_potato = || -> Result<()> {
             charge_ticket_entry()?;
+            self.pot += ticket_entry;
             push_potato_holding_information(PotatoHoldingInformation {
                 player: *player,
                 turn_number: 0,
                 payment_pending: 0,
-                turn_amount: ticket_entry / utils::NUM_TURNS,
+                turn_amount: ticket_entry / utils::TICKET_ENTRY_SPLIT,
             })?;
             emit!(PotatoReceived {
                 game: *for_game,
@@ -223,6 +229,9 @@ impl Game {
                     game: *for_game,
                     state: self.state,
                 });
+            }
+            GameState::Closed => {
+                return err!(HotPotatoError::GameClosed);
             }
             _ => {
                 give_player_hot_potato()?;
@@ -278,6 +287,7 @@ mod hot_potato {
             HotPotatoError::ImpossibleProgramFee
         );
         *ctx.accounts.new_game = Game {
+            pot: 0,
             game_master: *ctx.accounts.game_master.key,
             board: *ctx.accounts.new_board.to_account_info().key,
             permille_program_fee,
@@ -323,9 +333,9 @@ mod hot_potato {
             HotPotatoError::BelowTicketEntryMinimum
         );
         let calculate_portion_per_turn = |permille: u16| -> u64 {
-            ((ticket_entry * permille as u64) / 1000) / utils::NUM_TURNS
+            ((ticket_entry / utils::TICKET_ENTRY_SPLIT) * permille as u64) / 1000
         };
-        let actual_ticket_entry = utils::NUM_TURNS * (calculate_portion_per_turn(game.permille_program_fee) + calculate_portion_per_turn(1000 - game.permille_program_fee));
+        let actual_ticket_entry = utils::TICKET_ENTRY_SPLIT * (calculate_portion_per_turn(game.permille_program_fee) + calculate_portion_per_turn(1000 - game.permille_program_fee));
         let charge_ticket_entry = || {
             let cpi_context = CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
@@ -356,13 +366,21 @@ mod hot_potato {
             _ => return err!(HotPotatoError::CannotDisburseWhenNotActive),
         }
         let board = &mut ctx.accounts.board.load_mut()?;
-        let (from_game, for_game_master) = board.process_chunk_for_payment(&ctx.remaining_accounts, &offset, &game.permille_program_fee)?;
+        let (from_game, for_game_master, new_pot, should_close_game) = board.process_chunk_for_payment(&ctx.remaining_accounts, &offset, &game.permille_program_fee, game.pot)?;
         ctx.accounts.game_master.add_lamports(for_game_master)?;
         emit!(GameMasterPaid {
             game: game.to_account_info().key(),
             amount: for_game_master,
         });
         game.sub_lamports(from_game)?;
+        game.pot = new_pot;
+        if should_close_game {
+            game.state = GameState::Closed;
+            emit!(GameStateChanged {
+                game: game.to_account_info().key(),
+                state: game.state,
+            });
+        }
         Ok(())
     }
 }
