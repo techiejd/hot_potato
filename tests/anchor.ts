@@ -121,16 +121,10 @@ describe("HotPotato", () => {
       .signers([gameMasterAccountKp, boardAccountKp])
       .rpc();
     await confirmTx(txHash);
-    const gameAccount = await program.account.game.fetch(gameAccountPublicKey);
-    const boardAccount = await program.account.board.fetch(
-      boardAccountKp.publicKey
-    );
     return {
       gameMasterAccountKp,
       gameAccountPublicKey,
       boardAccountPublicKey: boardAccountKp.publicKey,
-      gameAccount,
-      boardAccount,
       boardAccountKp,
       txHash,
     };
@@ -437,8 +431,10 @@ describe("HotPotato", () => {
       const res = await initLongGame();
       gameMasterAccountKp = res.gameMasterAccountKp;
       boardAccountPublicKey = res.boardAccountPublicKey;
-      gameAccount = res.gameAccount;
-      boardAccount = res.boardAccount;
+      gameAccount = await program.account.game.fetch(res.gameAccountPublicKey);
+      boardAccount = await program.account.board.fetch(
+        res.boardAccountPublicKey
+      );
     });
 
     it("has game master", () =>
@@ -1617,7 +1613,58 @@ describe("HotPotato", () => {
             )
           ).to.be.rejectedWith(Error, "GameClosed");
         });
-        it("allows for game master to take out the game master money");
+        it("allows for game master to take out the game master money", async () => {
+          const {
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            firstPlayerAccountKp,
+          } = await getTo101thCrankWithOnePlayer();
+          const gameMasterStartingBalance =
+            await program.provider.connection.getBalance(
+              gameMasterAccountKp.publicKey
+            );
+          await doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [
+              {
+                pubkey: firstPlayerAccountKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+            ]
+          );
+
+          await program.methods
+            .withdrawRemainingFunds()
+            .accounts({
+              game: gameAccountPublicKey,
+              board: boardAccountPublicKey,
+              gameMaster: gameMasterAccountKp.publicKey,
+            })
+            .signers([gameMasterAccountKp])
+            .rpc();
+
+          const gameMasterEndingBalance =
+            await program.provider.connection.getBalance(
+              gameMasterAccountKp.publicKey
+            );
+          const boardRentExemptAmount =
+            await program.provider.connection.getMinimumBalanceForRentExemption(
+              program.account.board.size
+            );
+          const gameRentExemptAmount =
+            await program.provider.connection.getMinimumBalanceForRentExemption(
+              program.account.game.size
+            );
+          expect(gameMasterEndingBalance).to.be.greaterThanOrEqual(
+            gameMasterStartingBalance +
+              gameRentExemptAmount +
+              boardRentExemptAmount
+          );
+        });
       });
       it("disburses upto max number of turns");
       it("reliquinshes potato holder spot after max number of turns");
@@ -1628,10 +1675,53 @@ describe("HotPotato", () => {
     });
   });
   describe("Game master taking money out", async () => {
-    it("Only allows game master to take money");
-    it("Checks that game and board match");
-    it(
-      "Does not allow for game master to take money out before game is closed"
-    );
+    it("Only allows game master to take money", async () => {
+      const { gameAccountPublicKey, boardAccountKp, gameMasterAccountKp } =
+        await initLongGame();
+      const someOtherAccountKp = new web3.Keypair();
+      await expect(
+        program.methods
+          .withdrawRemainingFunds()
+          .accounts({
+            game: gameAccountPublicKey,
+            board: boardAccountKp.publicKey,
+            gameMaster: someOtherAccountKp.publicKey,
+          })
+          .signers([someOtherAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(anchor.AnchorError, "NotGameMaster");
+    });
+    it("Checks that game and board match", async () => {
+      const { gameAccountPublicKey, gameMasterAccountKp } =
+        await initLongGame();
+      const { boardAccountPublicKey: someOtherBoardAccountPublicKey } =
+        await initLongGame();
+      await expect(
+        program.methods
+          .withdrawRemainingFunds()
+          .accounts({
+            game: gameAccountPublicKey,
+            board: someOtherBoardAccountPublicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+          })
+          .signers([gameMasterAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(anchor.AnchorError, "BoardMismatch");
+    });
+    it("Does not allow for game master to take money out before game is closed", async () => {
+      const { gameAccountPublicKey, boardAccountKp, gameMasterAccountKp } =
+        await initLongGame();
+      await expect(
+        program.methods
+          .withdrawRemainingFunds()
+          .accounts({
+            game: gameAccountPublicKey,
+            board: boardAccountKp.publicKey,
+            gameMaster: gameMasterAccountKp.publicKey,
+          })
+          .signers([gameMasterAccountKp])
+          .rpc()
+      ).to.be.rejectedWith(anchor.AnchorError, "GameNotClosed");
+    });
   });
 });

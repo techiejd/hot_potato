@@ -57,6 +57,7 @@ pub enum HotPotatoError {
     TriedToDisburseToNotPendingPayment,
     CannotCrankWhenPaymentDue,
     GameClosed,
+    GameNotClosed
 }
 
 mod utils {
@@ -383,6 +384,20 @@ mod hot_potato {
         }
         Ok(())
     }
+
+    pub fn withdraw_remaining_funds(ctx: Context<WithdrawRemainingFunds>) -> Result<()> {
+        let game = &mut ctx.accounts.game;
+        let board = &mut ctx.accounts.board;
+        if game.state != GameState::Closed {
+            return err!(HotPotatoError::GameNotClosed);
+        }
+        let funds_in_game = game.get_lamports();
+        let funds_in_board = board.get_lamports();
+        game.sub_lamports(funds_in_game)?;
+        board.sub_lamports(funds_in_board)?;
+        ctx.accounts.game_master.add_lamports(funds_in_game + funds_in_board)?;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -437,6 +452,22 @@ pub struct DisburseToPotatoHolders<'info> {
     pub game: Account<'info, Game>,
     #[account(mut)]
     pub board: AccountLoader<'info, Board>,
+    #[account(mut)]
+    pub game_master: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct WithdrawRemainingFunds<'info> {
+    #[account(mut, constraint = 
+        game.board == board.to_account_info().key()
+        @ HotPotatoError::BoardMismatch,
+        constraint = 
+        game.game_master == game_master.to_account_info().key()
+        @ HotPotatoError::NotGameMaster)]
+    pub game: Account<'info, Game>,
+    /// CHECK: This is not a loader because we don't need to modify the board
+    #[account(mut)]
+    pub board: UncheckedAccount<'info>,
     #[account(mut)]
     pub game_master: Signer<'info>,
 }
