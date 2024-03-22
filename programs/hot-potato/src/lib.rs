@@ -57,12 +57,13 @@ pub enum HotPotatoError {
     TriedToDisburseToNotPendingPayment,
     CannotCrankWhenPaymentDue,
     GameClosed,
-    GameNotClosed
+    ProhibitedInPendingOrActive
 }
 
 mod utils {
     pub const TICKET_ENTRY_SPLIT: u64 = 100;
-    pub const NONUNIQUE_POTATO_HOLDERS_MAX: u16 = 10_000;
+    pub const NONUNIQUE_POTATO_HOLDERS_MAX: u64 = 10_000;
+    pub const MAX_NUM_TURNS: u32 = 150;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, Copy)]
@@ -98,7 +99,10 @@ pub struct Board {
 
 impl Board {
     fn next_tail(&self) -> u64 {
-        (self.tail + 1) % (utils::NONUNIQUE_POTATO_HOLDERS_MAX as u64)
+        (self.tail + 1) % utils::NONUNIQUE_POTATO_HOLDERS_MAX
+    }
+    fn pop(&mut self) {
+        self.head = (self.head + 1) % utils::NONUNIQUE_POTATO_HOLDERS_MAX;
     }
     pub fn push(&mut self, potato_holding_information: PotatoHoldingInformation) -> Result<()> {
         // This function adds a potato holding information to the end of the board in a round-robin fashion
@@ -119,7 +123,7 @@ impl Board {
             require_neq!(current.payment_pending, 1, HotPotatoError::CannotCrankWhenPaymentDue);
             current.payment_pending += 1;
             current.turn_number += 1;
-            i = (i + 1) % (utils::NONUNIQUE_POTATO_HOLDERS_MAX as u64);
+            i = (i + 1) % utils::NONUNIQUE_POTATO_HOLDERS_MAX;
         }
         Ok(())
     }
@@ -129,8 +133,10 @@ impl Board {
         let mut total_paid = 0u64;
         let mut total_fee = 0u64;
         let mut overdrawn = false;
+        let head_at_start_of_this_process = self.head as usize;
         for (i, acc) in chunk.iter().enumerate() {
-            let potato_holding_information = &mut self.potato_holders[(((*offset) + i as u16) % utils::NONUNIQUE_POTATO_HOLDERS_MAX) as usize];
+            let idx = (head_at_start_of_this_process + *offset as usize + i) % utils::NONUNIQUE_POTATO_HOLDERS_MAX as usize;
+            let potato_holding_information = &mut self.potato_holders[idx];
             require_eq!(
                 potato_holding_information.player,
                 acc.key(),
@@ -156,6 +162,9 @@ impl Board {
             });
             total_paid += for_potato_holder + fee_paid;
             total_fee += fee_paid;
+            if potato_holding_information.turn_number.eq(&utils::MAX_NUM_TURNS) {
+                self.pop();
+            }
             if overdrawn {
                 break;
             }
@@ -388,8 +397,15 @@ mod hot_potato {
     pub fn withdraw_remaining_funds(ctx: Context<WithdrawRemainingFunds>) -> Result<()> {
         let game = &mut ctx.accounts.game;
         let board = &mut ctx.accounts.board;
-        if game.state != GameState::Closed {
-            return err!(HotPotatoError::GameNotClosed);
+
+        match game.state {
+            GameState::Staging { .. } => {
+                return err!(HotPotatoError::ProhibitedInPendingOrActive)
+            }
+            GameState::Active { .. } => {
+                return err!(HotPotatoError::ProhibitedInPendingOrActive)
+            }
+            _ => {}
         }
         let funds_in_game = game.get_lamports();
         let funds_in_board = board.get_lamports();

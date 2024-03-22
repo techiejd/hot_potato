@@ -16,6 +16,8 @@ describe("HotPotato", () => {
   const bigNumZero = new anchor.BN(0);
   const minimumTicketEntry = new anchor.BN(web3.LAMPORTS_PER_SOL / 2);
   const TicketEntrySplit = 100;
+  const MaxNumTurns = 150;
+  const MaxNumPlayers = 10_000;
   const MaxNumOfRemainingAccountsDoableInOneDisbursementTx = 25;
   anchor.setProvider(anchor.AnchorProvider.env());
   type GameAccount = anchor.IdlAccounts<HotPotato>["game"];
@@ -443,13 +445,13 @@ describe("HotPotato", () => {
       expect(gameAccount.state).to.eql({ pending: {} }));
     it("has a game board", () =>
       expect(gameAccount.board).to.eql(boardAccountPublicKey));
-    it("has an empty hotPotatoHolders of length 10_000", () => {
+    it(`has an empty hotPotatoHolders of length ${MaxNumPlayers}`, () => {
       expect(boardAccount.head).to.be.a.bignumber.that.is.eq(bigNumZero);
       expect(boardAccount.tail).to.be.a.bignumber.that.is.eq(bigNumZero);
       boardAccount.potatoHolders.every((holder) =>
         expectEmptyBoardSlot(holder)
       );
-      expect(boardAccount.potatoHolders.length).to.eq(10_000);
+      expect(boardAccount.potatoHolders.length).to.eq(MaxNumPlayers);
     });
     it("has a staging period", () =>
       expect(gameAccount.stagingPeriodLength).to.be.a.bignumber.that.eq(
@@ -487,7 +489,7 @@ describe("HotPotato", () => {
           .and.to.eql(boardAccountKp.publicKey);
       };
       const eventListenerSpy = chai.spy(expectOnEvent);
-      const gameInitializedListener = program.addEventListener(
+      const listener = program.addEventListener(
         "GameInitialized",
         eventListenerSpy
       );
@@ -508,7 +510,7 @@ describe("HotPotato", () => {
       // This line is only for test purposes to ensure the event
       // listener has time to listen to event.
       await new Promise((resolve) => setTimeout(resolve, 5000));
-      program.removeEventListener(gameInitializedListener);
+      program.removeEventListener(listener);
       expect(eventListenerSpy).to.have.been.called();
     });
   });
@@ -700,7 +702,7 @@ describe("HotPotato", () => {
           stagingEndingTime = e["state"]["staging"]["ending"];
         };
         const eventListenerSpy = chai.spy(expectOnEvent);
-        const gameInitializedListener = program.addEventListener(
+        const listener = program.addEventListener(
           "GameStateChanged",
           eventListenerSpy
         );
@@ -716,7 +718,7 @@ describe("HotPotato", () => {
           await program.account.game.fetch(gameAccountPublicKey);
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        program.removeEventListener(gameInitializedListener);
+        program.removeEventListener(listener);
         expect(eventListenerSpy).to.have.been.called();
         expect(stagingEndingTime).to.be.a.bignumber.that.is.eq(
           refetchedGameAccount.state.staging?.ending
@@ -772,7 +774,7 @@ describe("HotPotato", () => {
             );
         };
         const eventListenerSpy = chai.spy(expectOnEvent);
-        const gameInitializedListener = program.addEventListener(
+        const listener = program.addEventListener(
           "PotatoReceived",
           eventListenerSpy
         );
@@ -784,7 +786,7 @@ describe("HotPotato", () => {
         );
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        program.removeEventListener(gameInitializedListener);
+        program.removeEventListener(listener);
         expect(eventListenerSpy).to.have.been.called();
       });
       it("fills hotPotatoHolders with player's turn information once", async () => {
@@ -884,23 +886,12 @@ describe("HotPotato", () => {
       });
     });
     it(
-      "allows for up to 10_000 players to join" /*, async () => {
+      `allows for up to ${MaxNumPlayers} players to join` /* async () => {
       // Heads up! This'll take a while to run.
       const { gameAccountPublicKey, boardAccountPublicKey } =
         await initLongGame();
-      const playerAccountKps = Array.from({ length: 10_000 }, () => {
-        return new web3.Keypair();
-      });
-      // Break up the players into chunks of 100 to avoid hitting tx or heap limits
-      const chunkSize = 100;
-      const chunkedPlayerAccountKps = playerAccountKps.reduce((acc, _, i) => {
-        const index = Math.floor(i / chunkSize);
-        if (!acc[index]) {
-          acc[index] = [];
-        }
-        acc[index].push(playerAccountKps[i]);
-        return acc;
-      }, [] as web3.Keypair[][]);
+      const { chunkedPlayerAccountKps, playerAccountKps } =
+        makeAndChunkPlayerAccountsFor(MaxNumPlayers);
       let counter = 0;
       for (const chunk of chunkedPlayerAccountKps) {
         await Promise.all(
@@ -1034,7 +1025,7 @@ describe("HotPotato", () => {
           nextCrankTimeFromEvent = e["state"]["active"]["nextCrank"];
         };
         const eventListenerSpy = chai.spy(expectOnEvent);
-        const gameInitializedListener = program.addEventListener(
+        const listener = program.addEventListener(
           "GameStateChanged",
           eventListenerSpy
         );
@@ -1048,7 +1039,7 @@ describe("HotPotato", () => {
           await program.account.game.fetch(gameAccountPublicKey);
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        program.removeEventListener(gameInitializedListener);
+        program.removeEventListener(listener);
         expect(eventListenerSpy).to.have.been.called();
         expect(nextCrankTimeFromEvent).to.be.a.bignumber.that.is.eql(
           refetchedGameAccount.state.active?.nextCrank
@@ -1130,7 +1121,10 @@ describe("HotPotato", () => {
             boardAccountPublicKey,
             gameMasterAccountKp,
             remainingAccounts
-          )
+          ).catch((e) => {
+            console.log(e);
+            throw e;
+          })
         ).to.eventually.be.ok;
       });
       it(`sends SOL to players and their program fee to game master
@@ -1223,7 +1217,7 @@ describe("HotPotato", () => {
           i++;
         };
         const eventListenerSpy = chai.spy(expectOnEvent);
-        const gameInitializedListener = program.addEventListener(
+        const listener = program.addEventListener(
           "PotatoHolderPaid",
           eventListenerSpy
         );
@@ -1236,7 +1230,7 @@ describe("HotPotato", () => {
         );
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        program.removeEventListener(gameInitializedListener);
+        program.removeEventListener(listener);
         expect(eventListenerSpy).to.have.been.called.exactly(
           MaxNumOfRemainingAccountsDoableInOneDisbursementTx
         );
@@ -1260,7 +1254,7 @@ describe("HotPotato", () => {
             );
         };
         const eventListenerSpy = chai.spy(expectOnEvent);
-        const gameInitializedListener = program.addEventListener(
+        const listener = program.addEventListener(
           "GameMasterPaid",
           eventListenerSpy
         );
@@ -1273,7 +1267,7 @@ describe("HotPotato", () => {
         );
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        program.removeEventListener(gameInitializedListener);
+        program.removeEventListener(listener);
         expect(eventListenerSpy).to.have.been.called();
       });
       it("fails if not in active state", async () => {
@@ -1324,6 +1318,51 @@ describe("HotPotato", () => {
         getDisbursableStateWithMaxTxPlayers(
           () => initGame(bigNumZero, new anchor.BN(1)) // 1 second
         );
+      const getTo101thCrankWithOnePlayer = async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+        } = await initShortGame();
+        const firstPlayerAccountKp = new web3.Keypair();
+        await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          firstPlayerAccountKp
+        );
+        await doCrank(
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey
+        );
+        console.log("cranked once");
+        for (let i = 0; i < 100; i++) {
+          await doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [
+              {
+                pubkey: firstPlayerAccountKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+            ]
+          );
+          await doCrank(
+            gameMasterAccountKp,
+            gameAccountPublicKey,
+            boardAccountPublicKey
+          );
+          console.log(`cranked ${i + 2} times out of 101`);
+        }
+        return {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          firstPlayerAccountKp,
+        };
+      };
       it("fails crank if payment is due", async () => {
         const {
           gameAccountPublicKey,
@@ -1422,7 +1461,7 @@ describe("HotPotato", () => {
           nextCrankTimeFromEvent = e["state"]["active"]["nextCrank"];
         };
         const eventListenerSpy = chai.spy(expectOnEvent);
-        const gameInitializedListener = program.addEventListener(
+        const listener = program.addEventListener(
           "GameStateChanged",
           eventListenerSpy
         );
@@ -1434,7 +1473,7 @@ describe("HotPotato", () => {
         );
 
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        program.removeEventListener(gameInitializedListener);
+        program.removeEventListener(listener);
         expect(eventListenerSpy).to.have.been.called();
         const fetchedGameAccount =
           await program.account.game.fetch(gameAccountPublicKey);
@@ -1443,51 +1482,6 @@ describe("HotPotato", () => {
         );
       });
       describe("Finishing", () => {
-        const getTo101thCrankWithOnePlayer = async () => {
-          const {
-            gameAccountPublicKey,
-            boardAccountPublicKey,
-            gameMasterAccountKp,
-          } = await initShortGame();
-          const firstPlayerAccountKp = new web3.Keypair();
-          await doPlayerRequestHotPotato(
-            gameAccountPublicKey,
-            boardAccountPublicKey,
-            firstPlayerAccountKp
-          );
-          await doCrank(
-            gameMasterAccountKp,
-            gameAccountPublicKey,
-            boardAccountPublicKey
-          );
-          console.log("cranked once");
-          for (let i = 0; i < 100; i++) {
-            await doDisbursement(
-              gameAccountPublicKey,
-              boardAccountPublicKey,
-              gameMasterAccountKp,
-              [
-                {
-                  pubkey: firstPlayerAccountKp.publicKey,
-                  isSigner: false,
-                  isWritable: true,
-                },
-              ]
-            );
-            await doCrank(
-              gameMasterAccountKp,
-              gameAccountPublicKey,
-              boardAccountPublicKey
-            );
-            console.log(`cranked ${i + 2} times out of 101`);
-          }
-          return {
-            gameAccountPublicKey,
-            boardAccountPublicKey,
-            gameMasterAccountKp,
-            firstPlayerAccountKp,
-          };
-        };
         it("stops disbursements when we run out of money in the pot", async () => {
           const {
             gameAccountPublicKey,
@@ -1564,7 +1558,7 @@ describe("HotPotato", () => {
             expect(e).to.have.property("state").and.to.eql({ closed: {} });
           };
           const eventListenerSpy = chai.spy(expectOnEvent);
-          const gameInitializedListener = program.addEventListener(
+          const listener = program.addEventListener(
             "GameStateChanged",
             eventListenerSpy
           );
@@ -1582,7 +1576,7 @@ describe("HotPotato", () => {
           );
 
           await new Promise((resolve) => setTimeout(resolve, 2000));
-          program.removeEventListener(gameInitializedListener);
+          program.removeEventListener(listener);
           expect(eventListenerSpy).to.have.been.called();
         });
         it("it does not allow new players to join", async () => {
@@ -1666,8 +1660,161 @@ describe("HotPotato", () => {
           );
         });
       });
-      it("disburses upto max number of turns");
-      it("reliquinshes potato holder spot after max number of turns");
+      it(`disburses up to max number of turns and then
+       allows other to take spot`, async () => {
+        const {
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          firstPlayerAccountKp,
+        } = await getTo101thCrankWithOnePlayer(); // 100 disbursements already
+        let numTimesFirstPlayerDisbursed = 101;
+        const expectOnEvent = (e: unknown) => {
+          console.log("AYO IS IT FAILING HERE?");
+          expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
+          console.log("NO");
+          expect(e).to.have.property("player");
+          expect(e)
+            .to.have.property("amount")
+            .and.to.be.a.bignumber.that.is.eq(new anchor.BN(returnPerTurn));
+          if (firstPlayerAccountKp.publicKey.equals((e as any).player)) {
+            expect(e)
+              .to.have.property("turn")
+              .and.to.eql(numTimesFirstPlayerDisbursed);
+            numTimesFirstPlayerDisbursed += 1;
+          }
+        };
+        const eventListenerSpy = chai.spy(expectOnEvent);
+        const listener = program.addEventListener(
+          "PotatoHolderPaid",
+          eventListenerSpy
+        );
+        const secondPlayerKp = new web3.Keypair();
+        await doPlayerRequestHotPotato(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          secondPlayerKp
+        );
+        // We know that the first player went through the same
+        // initialization steps, so we assume it has the same
+        // balance at this point.
+        const playerBalanceAfterRequestingHotPotato =
+          await program.provider.connection.getBalance(
+            secondPlayerKp.publicKey
+          );
+        await doDisbursement(
+          gameAccountPublicKey,
+          boardAccountPublicKey,
+          gameMasterAccountKp,
+          [
+            {
+              pubkey: firstPlayerAccountKp.publicKey,
+              isSigner: false,
+              isWritable: true,
+            },
+          ]
+        );
+        for (let i = 0; i < 49; i++) {
+          await doCrank(
+            gameMasterAccountKp,
+            gameAccountPublicKey,
+            boardAccountPublicKey
+          );
+          await doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [
+              {
+                pubkey: firstPlayerAccountKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+              {
+                pubkey: secondPlayerKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+            ]
+          );
+          console.log(`cranked + disbursed ${102 + i} of 150`);
+        }
+
+        await doCrank(
+          gameMasterAccountKp,
+          gameAccountPublicKey,
+          boardAccountPublicKey
+        );
+
+        await expect(
+          doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [
+              {
+                pubkey: firstPlayerAccountKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+              {
+                pubkey: secondPlayerKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+            ]
+          )
+        ).to.be.eventually.rejectedWith(
+          anchor.AnchorError,
+          "PlayerSlotMismatch"
+        );
+        await expect(
+          doDisbursement(
+            gameAccountPublicKey,
+            boardAccountPublicKey,
+            gameMasterAccountKp,
+            [
+              {
+                pubkey: secondPlayerKp.publicKey,
+                isSigner: false,
+                isWritable: true,
+              },
+            ]
+          )
+        ).to.eventually.be.ok;
+        const firstPlayerEndingBalance =
+          await program.provider.connection.getBalance(
+            firstPlayerAccountKp.publicKey
+          );
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        program.removeEventListener(listener);
+        expect(eventListenerSpy).to.have.been.called.exactly(100);
+        expect(firstPlayerEndingBalance).to.be.eql(
+          playerBalanceAfterRequestingHotPotato + MaxNumTurns * returnPerTurn
+        );
+
+        const expectedEmptySlots = MaxNumPlayers - 1; // Since player two is still in the game.
+        const { chunkedPlayerAccountKps } =
+          makeAndChunkPlayerAccountsFor(expectedEmptySlots);
+        let counter = 0;
+        for (const chunk of chunkedPlayerAccountKps) {
+          await expect(
+            Promise.all(
+              chunk.map((playerAccountKp) =>
+                doPlayerRequestHotPotato(
+                  gameAccountPublicKey,
+                  boardAccountPublicKey,
+                  playerAccountKp
+                )
+              )
+            )
+          ).to.eventually.be.ok;
+          console.log(
+            `Chunk ${counter + 1} of ${chunkedPlayerAccountKps.length}`
+          );
+          counter++;
+        }
+      });
     });
     describe("Affiliate link", async () => {
       it("saves affiliate");
@@ -1708,7 +1855,7 @@ describe("HotPotato", () => {
           .rpc()
       ).to.be.rejectedWith(anchor.AnchorError, "BoardMismatch");
     });
-    it("Does not allow for game master to take money out before game is closed", async () => {
+    it("Allows for game master to take money out during pending and not staging or active", async () => {
       const { gameAccountPublicKey, boardAccountKp, gameMasterAccountKp } =
         await initLongGame();
       await expect(
@@ -1721,7 +1868,62 @@ describe("HotPotato", () => {
           })
           .signers([gameMasterAccountKp])
           .rpc()
-      ).to.be.rejectedWith(anchor.AnchorError, "GameNotClosed");
+      ).to.eventually.be.ok;
+
+      const {
+        gameAccountPublicKey: gameAccountPublicKey0,
+        boardAccountKp: boardAccountKp0,
+        gameMasterAccountKp: gameMasterAccountKp0,
+      } = await initShortGame();
+      const firstPlayerAccountKp = new web3.Keypair();
+      await doPlayerRequestHotPotato(
+        gameAccountPublicKey0,
+        boardAccountKp0.publicKey,
+        firstPlayerAccountKp
+      );
+      await expect(
+        program.methods
+          .withdrawRemainingFunds()
+          .accounts({
+            game: gameAccountPublicKey0,
+            board: boardAccountKp0.publicKey,
+            gameMaster: gameMasterAccountKp0.publicKey,
+          })
+          .signers([gameMasterAccountKp0])
+          .rpc()
+      ).to.be.rejectedWith(anchor.AnchorError, "ProhibitedInPendingOrActive");
+      doCrank(
+        gameMasterAccountKp0,
+        gameAccountPublicKey0,
+        boardAccountKp0.publicKey
+      );
+      await expect(
+        program.methods
+          .withdrawRemainingFunds()
+          .accounts({
+            game: gameAccountPublicKey0,
+            board: boardAccountKp0.publicKey,
+            gameMaster: gameMasterAccountKp0.publicKey,
+          })
+          .signers([gameMasterAccountKp0])
+          .rpc()
+      ).to.be.rejectedWith(anchor.AnchorError, "ProhibitedInPendingOrActive");
     });
   });
 });
+function makeAndChunkPlayerAccountsFor(MaxNumPlayers: number) {
+  const playerAccountKps = Array.from({ length: MaxNumPlayers }, () => {
+    return new web3.Keypair();
+  });
+  // Break up the players into chunks of 100 to avoid hitting tx or heap limits
+  const chunkSize = 100;
+  const chunkedPlayerAccountKps = playerAccountKps.reduce((acc, _, i) => {
+    const index = Math.floor(i / chunkSize);
+    if (!acc[index]) {
+      acc[index] = [];
+    }
+    acc[index].push(playerAccountKps[i]);
+    return acc;
+  }, [] as web3.Keypair[][]);
+  return { chunkedPlayerAccountKps, playerAccountKps };
+}
