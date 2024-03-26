@@ -7,6 +7,7 @@ use std::{ops::Add, vec::Vec};
 use anchor_lang::error_code;
 use std::result::Result::Ok;
 
+
 #[event]
 pub struct GameInitialized {
     pub game_master: Pubkey,
@@ -279,7 +280,8 @@ impl Game {
 
 // This is your program's public key and it will update
 // automatically when you build the project.
-declare_id!("9Y9Fcs7ixpxYYDdWZTKtXyEWJiUmDPmWPLsAT6bYvE4a");
+//declare_id!("9Y9Fcs7ixpxYYDdWZTKtXyEWJiUmDPmWPLsAT6bYvE4a"); // jd
+declare_id!("7CYJxLf9dHNhHi6ee8yg92o6WGh7FhLiNzTzddAMnFwJ"); // dev
 
 #[program]
 mod hot_potato {

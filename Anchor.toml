@@ -3,7 +3,8 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-hot_potato = "9Y9Fcs7ixpxYYDdWZTKtXyEWJiUmDPmWPLsAT6bYvE4a"
+# hot_potato = "9Y9Fcs7ixpxYYDdWZTKtXyEWJiUmDPmWPLsAT6bYvE4a" # jd
+hot_potato = "7CYJxLf9dHNhHi6ee8yg92o6WGh7FhLiNzTzddAMnFwJ" #dev
 
 [registry]
 url = "https://api.apr.dev"
