@@ -3,7 +3,7 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-hot_potato = "9Y9Fcs7ixpxYYDdWZTKtXyEWJiUmDPmWPLsAT6bYvE4a"
+hot_potato = "ACGMUCw7Vz2k26UNN3x8u1YwbfqQgNQoCwy2RcKB7jGR"
 
 [registry]
 url = "https://api.apr.dev"
@@ -14,4 +14,5 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
-client = "yarn run ts-node client/*.ts"
+gameMasterClient = "yarn run ts-node client/gameMaster.ts"
+playerClient = "yarn run ts-node client/player.ts"

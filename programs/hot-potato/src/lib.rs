@@ -279,7 +279,7 @@ impl Game {
 
 // This is your program's public key and it will update
 // automatically when you build the project.
-declare_id!("9Y9Fcs7ixpxYYDdWZTKtXyEWJiUmDPmWPLsAT6bYvE4a");
+declare_id!("ACGMUCw7Vz2k26UNN3x8u1YwbfqQgNQoCwy2RcKB7jGR");
 
 #[program]
 mod hot_potato {

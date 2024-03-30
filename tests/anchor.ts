@@ -5,20 +5,24 @@ import chai, { expect } from "chai";
 import BN from "chai-bn";
 import chaiAsPromised from "chai-as-promised";
 import spies from "chai-spies";
+import {
+  bigNumZero,
+  airdrop,
+  initializeBoardAccount,
+  minimumTicketEntry,
+  permilleProgramFee,
+  oneDay,
+  oneHour,
+  MaxNumOfRemainingAccountsDoableInOneDisbursementTx,
+  MaxNumPlayers,
+  TicketEntrySplit,
+  MaxNumTurns,
+} from "../client/utils";
 chai.use(BN(anchor.BN));
 chai.use(chaiAsPromised);
 chai.use(spies);
 
 describe("HotPotato", () => {
-  const oneDay: anchor.BN = new anchor.BN(86400); // seconds
-  const permilleProgramFee = 35; // 3.5% percent
-  const oneHour = new anchor.BN(3600); // seconds
-  const bigNumZero = new anchor.BN(0);
-  const minimumTicketEntry = new anchor.BN(web3.LAMPORTS_PER_SOL / 2);
-  const TicketEntrySplit = 100;
-  const MaxNumTurns = 150;
-  const MaxNumPlayers = 10_000;
-  const MaxNumOfRemainingAccountsDoableInOneDisbursementTx = 25;
   anchor.setProvider(anchor.AnchorProvider.env());
   type GameAccount = anchor.IdlAccounts<HotPotato>["game"];
   type BoardAccount = anchor.IdlAccounts<HotPotato>["board"];
@@ -26,45 +30,6 @@ describe("HotPotato", () => {
     anchor.IdlTypes<HotPotato>["PotatoHoldingInformation"];
 
   const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
-  const confirmTx = async (txHash: string) => {
-    const latestBlockHash =
-      await program.provider.connection.getLatestBlockhash();
-
-    return program.provider.connection.confirmTransaction({
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: txHash,
-    });
-  };
-  const airdrop = async (addy: web3.PublicKey) => {
-    const airdropSignature = await program.provider.connection.requestAirdrop(
-      addy,
-      10 * web3.LAMPORTS_PER_SOL
-    );
-    return confirmTx(airdropSignature);
-  };
-  const initializeBoardAccount = async (gameMasterAccountKp: web3.Keypair) => {
-    const boardAccountKp = new web3.Keypair();
-    const boardAccountSize = program.account.board.size;
-    const lamportsForRentExemption =
-      await program.provider.connection.getMinimumBalanceForRentExemption(
-        boardAccountSize
-      );
-    const createAccountInstruction = web3.SystemProgram.createAccount({
-      fromPubkey: gameMasterAccountKp.publicKey,
-      newAccountPubkey: boardAccountKp.publicKey,
-      lamports: lamportsForRentExemption,
-      space: boardAccountSize,
-      programId: program.programId,
-    });
-    const transaction = new web3.Transaction().add(createAccountInstruction);
-    await web3.sendAndConfirmTransaction(
-      program.provider.connection,
-      transaction,
-      [gameMasterAccountKp, boardAccountKp]
-    );
-    return boardAccountKp;
-  };
   const expectBoardSlotToMatch = (
     holder: PotatoHoldingInformation,
     expected: PotatoHoldingInformation
