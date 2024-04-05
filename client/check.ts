@@ -1,8 +1,5 @@
-import { web3 } from "@coral-xyz/anchor";
 import * as anchor from "@coral-xyz/anchor";
-import fs from "fs";
 import type { HotPotato } from "../target/types/hot_potato";
-import { airdrop, confirmTx, minimumTicketEntry } from "./utils";
 import { PublicKey } from "@solana/web3.js";
 
 const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;

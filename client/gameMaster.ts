@@ -5,11 +5,12 @@ import {
   airdrop,
   confirmTx,
   initializeBoardAccount,
+  loadKeypair,
   oneDay,
   oneHour,
   printBalance,
+  saveSecretKeyWithTimestamp,
 } from "./utils";
-import fs from "fs";
 
 // Configure the client to use the local cluster
 anchor.setProvider(anchor.AnchorProvider.env());
@@ -22,6 +23,14 @@ const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
     console.log("Game initialized event:", event);
     program.removeEventListener(listener);
   });
+  const gameMasterAccountKp = loadKeypair("gameMasterSK_1712303851118.json");
+  const boardAccountKp = loadKeypair("boardAccountSK_1712303852182.json");
+  console.log(
+    "Game master account public key:",
+    gameMasterAccountKp.publicKey.toString()
+  );
+  console.log("Board account public key:", boardAccountKp.publicKey.toString());
+  /*
   const gameMasterAccountKp = web3.Keypair.generate();
   await printBalance(program, gameMasterAccountKp.publicKey);
   console.log("Airdropping to the game master...");
@@ -31,10 +40,7 @@ const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
 
   // Save the gameMasterAccountKp to a local file
   console.log(gameMasterAccountKp.publicKey.toString());
-  fs.writeFileSync(
-    `../gameMasterAccountKp${Date.now().toString()}`,
-    JSON.stringify(gameMasterAccountKp)
-  );
+  saveSecretKeyWithTimestamp(gameMasterAccountKp, "gameMasterSK");
 
   // Create a new board
   console.log("Creating a new board...");
@@ -43,10 +49,9 @@ const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
     program
   );
   console.log(boardAccountKp.publicKey.toString());
-  fs.writeFileSync(
-    `../boardAccountKp${Date.now().toString()}`,
-    JSON.stringify(boardAccountKp)
-  );
+  await printBalance(program, gameMasterAccountKp.publicKey);
+  saveSecretKeyWithTimestamp(boardAccountKp, "boardAccountSK");
+  */
 
   const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
     [

@@ -9,7 +9,7 @@ hot_potato = "ACGMUCw7Vz2k26UNN3x8u1YwbfqQgNQoCwy2RcKB7jGR"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

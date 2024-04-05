@@ -1,6 +1,7 @@
 import * as web3 from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import type { HotPotato } from "../target/types/hot_potato";
+import fs from "fs";
 
 export const initializeBoardAccount = async (
   gameMasterAccountKp: web3.Keypair,
@@ -34,7 +35,7 @@ export const airdrop = async (
 ) => {
   const airdropSignature = await program.provider.connection.requestAirdrop(
     addy,
-    10 * web3.LAMPORTS_PER_SOL
+    5 * web3.LAMPORTS_PER_SOL
   );
   return confirmTx(airdropSignature, program);
 };
@@ -71,4 +72,18 @@ export async function printBalance(
   console.log("My address:", currentKey.toString());
   const balance = await program.provider.connection.getBalance(currentKey);
   console.log(`My balance: ${balance / web3.LAMPORTS_PER_SOL} SOL`);
+}
+
+export function saveSecretKeyWithTimestamp(kp: web3.Keypair, fileName: string) {
+  fs.writeFileSync(
+    `${fileName}_${Date.now().toString()}.json`,
+    "[" + kp.secretKey.toString() + "]"
+  );
+}
+
+export function loadKeypair(fileName: string) {
+  const secretKeyString = fs.readFileSync(fileName, { encoding: "utf-8" });
+  const secretKeyArray = JSON.parse(secretKeyString);
+  const secretKeyUInt8Array = new Uint8Array(secretKeyArray);
+  return web3.Keypair.fromSecretKey(secretKeyUInt8Array);
 }
