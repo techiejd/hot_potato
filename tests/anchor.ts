@@ -17,6 +17,7 @@ import {
   MaxNumPlayers,
   TicketEntrySplit,
   MaxNumTurns,
+  confirmTx,
 } from "../client/utils";
 chai.use(BN(anchor.BN));
 chai.use(chaiAsPromised);
@@ -59,9 +60,12 @@ describe("HotPotato", () => {
     turnPeriodLength: anchor.BN
   ) => {
     const gameMasterAccountKp = new web3.Keypair();
-    await airdrop(gameMasterAccountKp.publicKey);
+    await airdrop(gameMasterAccountKp.publicKey, program);
 
-    const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
+    const boardAccountKp = await initializeBoardAccount(
+      gameMasterAccountKp,
+      program
+    );
 
     const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
       [
@@ -87,7 +91,7 @@ describe("HotPotato", () => {
       })
       .signers([gameMasterAccountKp, boardAccountKp])
       .rpc();
-    await confirmTx(txHash);
+    await confirmTx(txHash, program);
     return {
       gameMasterAccountKp,
       gameAccountPublicKey,
@@ -108,7 +112,7 @@ describe("HotPotato", () => {
     skipAirdrop = false
   ) => {
     if (!skipAirdrop) {
-      await airdrop(playerAccountKp.publicKey);
+      await airdrop(playerAccountKp.publicKey, program);
     }
     const playerRequestsHotPotatoTxHash = await program.methods
       .requestHotPotato(minimumTicketEntry)
@@ -121,7 +125,8 @@ describe("HotPotato", () => {
       .signers([playerAccountKp])
       .rpc();
     const playerRequestsHotPotatoTxConfirmation = await confirmTx(
-      playerRequestsHotPotatoTxHash
+      playerRequestsHotPotatoTxHash,
+      program
     );
     return {
       playerRequestsHotPotatoTxHash,
@@ -143,7 +148,7 @@ describe("HotPotato", () => {
       })
       .signers([gameMasterAccountKp])
       .rpc();
-    const crankTxConfirmation = await confirmTx(crankTxHash);
+    const crankTxConfirmation = await confirmTx(crankTxHash, program);
     return {
       crankTxHash,
       crankTxConfirmation,
@@ -171,7 +176,10 @@ describe("HotPotato", () => {
       .signers([gameMasterAccountKp])
       .remainingAccounts(remainingAccounts)
       .rpc();
-    const disbursementTxHashConfirmation = await confirmTx(disbursementTxHash);
+    const disbursementTxHashConfirmation = await confirmTx(
+      disbursementTxHash,
+      program
+    );
     return {
       disbursementTxHash,
       disbursementTxHashConfirmation,
@@ -244,8 +252,11 @@ describe("HotPotato", () => {
   describe("Fails initializing", async () => {
     it("fails initializing if seed doesn't include only gameMaster and board", async () => {
       const gameMasterAccountKp = new web3.Keypair();
-      await airdrop(gameMasterAccountKp.publicKey);
-      const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
+      await airdrop(gameMasterAccountKp.publicKey, program);
+      const boardAccountKp = await initializeBoardAccount(
+        gameMasterAccountKp,
+        program
+      );
       const restOfAccounts = {
         newBoard: boardAccountKp.publicKey,
         gameMaster: gameMasterAccountKp.publicKey,
@@ -335,8 +346,11 @@ describe("HotPotato", () => {
     });
     it("fails initializing if gameMaster and board are not the (only) signers", async () => {
       const gameMasterAccountKp = new web3.Keypair();
-      await airdrop(gameMasterAccountKp.publicKey);
-      const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
+      await airdrop(gameMasterAccountKp.publicKey, program);
+      const boardAccountKp = await initializeBoardAccount(
+        gameMasterAccountKp,
+        program
+      );
       const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
         [
           boardAccountKp.publicKey.toBuffer(),
@@ -364,8 +378,11 @@ describe("HotPotato", () => {
     });
     it("fails initializing if more than 1000 is given as permilleProgramFee", async () => {
       const gameMasterAccountKp = new web3.Keypair();
-      await airdrop(gameMasterAccountKp.publicKey);
-      const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
+      await airdrop(gameMasterAccountKp.publicKey, program);
+      const boardAccountKp = await initializeBoardAccount(
+        gameMasterAccountKp,
+        program
+      );
       const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
         [
           boardAccountKp.publicKey.toBuffer(),
@@ -432,9 +449,12 @@ describe("HotPotato", () => {
       ));
     it("emits game initialized event", async () => {
       const gameMasterAccountKp = new web3.Keypair();
-      await airdrop(gameMasterAccountKp.publicKey);
+      await airdrop(gameMasterAccountKp.publicKey, program);
 
-      const boardAccountKp = await initializeBoardAccount(gameMasterAccountKp);
+      const boardAccountKp = await initializeBoardAccount(
+        gameMasterAccountKp,
+        program
+      );
 
       const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
         [
@@ -470,7 +490,7 @@ describe("HotPotato", () => {
         })
         .signers([gameMasterAccountKp, boardAccountKp])
         .rpc();
-      await confirmTx(txHash);
+      await confirmTx(txHash, program);
 
       // This line is only for test purposes to ensure the event
       // listener has time to listen to event.
@@ -693,7 +713,7 @@ describe("HotPotato", () => {
         const { gameAccountPublicKey, boardAccountPublicKey } =
           await initLongGame();
         const firstPlayerAccountKp = new web3.Keypair();
-        await airdrop(firstPlayerAccountKp.publicKey);
+        await airdrop(firstPlayerAccountKp.publicKey, program);
         const gameAccountStartingBalance =
           await program.provider.connection.getBalance(gameAccountPublicKey);
         const firstPlayerStartingBalance =
@@ -923,7 +943,7 @@ describe("HotPotato", () => {
           })
           .signers([gameMasterAccountKp])
           .rpc();
-        const crankTxConfirmation = await confirmTx(crankTxHash);
+        const crankTxConfirmation = await confirmTx(crankTxHash, program);
         const refetchedGameAccount =
           await program.account.game.fetch(gameAccountPublicKey);
         const txTime = await program.provider.connection.getBlockTime(
