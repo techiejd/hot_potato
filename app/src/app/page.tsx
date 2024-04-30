@@ -4,13 +4,19 @@ import { useState } from "react";
 import SunPotato from "./svgs/SunPotato";
 import PhantomLogo from "./svgs/PhantomLogo";
 
+import { HotPotato, IDL } from "../../../target/types/hot_potato";
+import * as anchor from '@coral-xyz/anchor'
+
 import {
   Connection,
   TransactionMessage,
   VersionedTransaction,
   SystemProgram,
   PublicKey,
+  clusterApiUrl,
+  LAMPORTS_PER_SOL
 } from "@solana/web3.js";
+import { Program } from "@coral-xyz/anchor";
 
 declare global {
   interface Window {
@@ -31,13 +37,27 @@ const getProvider = () => {
   window.open("https://phantom.app/", "_blank");
 };
 
-const NETWORK_URL = "http://127.0.0.1:8899";
-const gameMasterPublicKey = new PublicKey(
+const MINIMUM_SOL_SEND_AMOUNT = new anchor.BN(LAMPORTS_PER_SOL / 2)
+
+const programPublicKey = new PublicKey(
   "Au5AT3CPcnQNf3ydRwbMrNYwkhanvKvZdwPSkguLDLeJ"
+);
+
+const gameMasterAccountPublicKey = new PublicKey(
+  "6bvSxGiX8mSRjoC8N5YBKeNvg99wRFfBCqX2VadVb9U6"
+);
+
+const boardAccountPublicKey = new PublicKey(
+  "9YZMzXL7WVBkPp6XUrwakX6WAgmdEYNFrSMjnMuzuQWK"
+);
+
+const gameAccountPublicKey = new PublicKey(
+  "GnDkQ41MbRDB81XRcxVD3buD3smUySDkBJu25bd7rMvg"
 );
 
 const SolPotato = () => {
   const provider = getProvider();
+  const program = new Program(IDL, programPublicKey, provider);
 
   const [connected, setConnected] = useState(false);
 
@@ -56,37 +76,21 @@ const SolPotato = () => {
     if (!provider) return;
 
     try {
-      const provider = getProvider(); // see "Detecting the Provider"
-
       const playerPublicKey = provider.publicKey;
-
-      const network = NETWORK_URL;
+      const network = clusterApiUrl('devnet');
       const connection = new Connection(network);
 
-      let minRent = await connection.getMinimumBalanceForRentExemption(0);
-      let blockhash = await connection
-        .getLatestBlockhash()
-        .then((res) => res.blockhash);
+      const anchorTransaction = await program.methods.requestHotPotato(MINIMUM_SOL_SEND_AMOUNT).accounts({
+        game: gameAccountPublicKey,
+        board: boardAccountPublicKey,
+        player: playerPublicKey,
+        systemProgram: SystemProgram.programId,
+      }).transaction()
 
-      // create an array with your desires `instructions`
-      const instructions = [
-        SystemProgram.transfer({
-          lamports: minRent,
-          fromPubkey: playerPublicKey,
-          toPubkey: gameMasterPublicKey,
-        }),
-      ];
+      anchorTransaction.recentBlockhash = await connection.getLatestBlockhash().then((res) => res.blockhash)
+      anchorTransaction.feePayer = playerPublicKey
 
-      // create v0 compatible message
-      const messageV0 = new TransactionMessage({
-        payerKey: playerPublicKey,
-        recentBlockhash: blockhash,
-        instructions,
-      }).compileToV0Message();
-
-      const transaction = new VersionedTransaction(messageV0);
-
-      const { signature } = await provider.signAndSendTransaction(transaction);
+      const { signature } = await provider.signAndSendTransaction(anchorTransaction);
       await connection.getSignatureStatus(signature);
     } catch (error) {
       console.error("Error disconnecting:", error);

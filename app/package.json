@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.29.0",
     "@solana/web3.js": "^1.91.2",
     "classnames": "^2.5.1",
     "http-proxy": "^1.18.1",
