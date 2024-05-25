@@ -1,0 +1,10 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read: if true; // Allow anyone to read
+      allow write: if request.auth.uid == "firebase-adminsdk-lklxg@ponzu-b8783.iam.gserviceaccount.com"; // Only the backend service account can write
+    }
+  }
+}

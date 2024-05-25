@@ -23,14 +23,16 @@ const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
     console.log("Game initialized event:", event);
     program.removeEventListener(listener);
   });
-  const gameMasterAccountKp = loadKeypair("gameMasterSK_1712303851118.json");
-  const boardAccountKp = loadKeypair("boardAccountSK_1712303852182.json");
+  /**
+  const gameMasterAccountKp = loadKeypair("gameMasterSK_1716534014762.json");
+  const boardAccountKp = loadKeypair("boardAccountSK_1716534016713.json");
   console.log(
     "Game master account public key:",
     gameMasterAccountKp.publicKey.toString()
   );
   console.log("Board account public key:", boardAccountKp.publicKey.toString());
-  /*
+  */
+
   const gameMasterAccountKp = web3.Keypair.generate();
   await printBalance(program, gameMasterAccountKp.publicKey);
   console.log("Airdropping to the game master...");
@@ -51,7 +53,7 @@ const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
   console.log(boardAccountKp.publicKey.toString());
   await printBalance(program, gameMasterAccountKp.publicKey);
   saveSecretKeyWithTimestamp(boardAccountKp, "boardAccountSK");
-  */
+  /***/
 
   const [gameAccountPublicKey] = web3.PublicKey.findProgramAddressSync(
     [
@@ -78,4 +80,5 @@ const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
   console.log("Transaction hash initializing:", txHash);
   await confirmTx(txHash, program);
   console.log("Game initialized!");
+  await printBalance(program, gameMasterAccountKp.publicKey);
 })();

@@ -5,7 +5,7 @@ import SunPotato from "./svgs/SunPotato";
 import PhantomLogo from "./svgs/PhantomLogo";
 
 import { HotPotato, IDL } from "../../../target/types/hot_potato";
-import * as anchor from '@coral-xyz/anchor'
+import * as anchor from "@coral-xyz/anchor";
 
 import {
   Connection,
@@ -14,9 +14,10 @@ import {
   SystemProgram,
   PublicKey,
   clusterApiUrl,
-  LAMPORTS_PER_SOL
+  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import { Program } from "@coral-xyz/anchor";
+import { programPublicKey } from "./utils";
 
 declare global {
   interface Window {
@@ -37,11 +38,7 @@ const getProvider = () => {
   window.open("https://phantom.app/", "_blank");
 };
 
-const MINIMUM_SOL_SEND_AMOUNT = new anchor.BN(LAMPORTS_PER_SOL / 2)
-
-const programPublicKey = new PublicKey(
-  "Au5AT3CPcnQNf3ydRwbMrNYwkhanvKvZdwPSkguLDLeJ"
-);
+const MINIMUM_SOL_SEND_AMOUNT = new anchor.BN(LAMPORTS_PER_SOL / 2);
 
 const gameMasterAccountPublicKey = new PublicKey(
   "6bvSxGiX8mSRjoC8N5YBKeNvg99wRFfBCqX2VadVb9U6"
@@ -77,20 +74,26 @@ const SolPotato = () => {
 
     try {
       const playerPublicKey = provider.publicKey;
-      const network = clusterApiUrl('devnet');
+      const network = clusterApiUrl("devnet");
       const connection = new Connection(network);
 
-      const anchorTransaction = await program.methods.requestHotPotato(MINIMUM_SOL_SEND_AMOUNT).accounts({
-        game: gameAccountPublicKey,
-        board: boardAccountPublicKey,
-        player: playerPublicKey,
-        systemProgram: SystemProgram.programId,
-      }).transaction()
+      const anchorTransaction = await program.methods
+        .requestHotPotato(MINIMUM_SOL_SEND_AMOUNT)
+        .accounts({
+          game: gameAccountPublicKey,
+          board: boardAccountPublicKey,
+          player: playerPublicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
 
-      anchorTransaction.recentBlockhash = await connection.getLatestBlockhash().then((res) => res.blockhash)
-      anchorTransaction.feePayer = playerPublicKey
+      anchorTransaction.recentBlockhash = await connection
+        .getLatestBlockhash()
+        .then((res) => res.blockhash);
+      anchorTransaction.feePayer = playerPublicKey;
 
-      const { signature } = await provider.signAndSendTransaction(anchorTransaction);
+      const { signature } =
+        await provider.signAndSendTransaction(anchorTransaction);
       await connection.getSignatureStatus(signature);
     } catch (error) {
       console.error("Error disconnecting:", error);
