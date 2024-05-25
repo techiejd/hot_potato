@@ -4,7 +4,7 @@ import { useState } from "react";
 import SunPotato from "./svgs/SunPotato";
 import PhantomLogo from "./svgs/PhantomLogo";
 
-import { HotPotato, IDL } from "../../../target/types/hot_potato";
+import { IDL } from "../hot_potato";
 import * as anchor from "@coral-xyz/anchor";
 
 import {

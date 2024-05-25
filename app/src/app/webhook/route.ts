@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 import { cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import * as anchor from "@coral-xyz/anchor";
-import { HotPotato, IDL } from "../../../../target/types/hot_potato";
+import { HotPotato, IDL } from "../../hot_potato";
 import { programPublicKey } from "../utils";
 
 type HotPotatoEvents = anchor.IdlEvents<HotPotato>;
