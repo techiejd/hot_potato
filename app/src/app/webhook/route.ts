@@ -24,11 +24,13 @@ function convertPropertiesToString<T extends object>(
         value instanceof anchor.BN ||
         value instanceof anchor.web3.PublicKey
       ) {
+        const v = value as anchor.BN | anchor.web3.PublicKey; // To avoid vercel build issue
         // If the value is a BigNumber or a PublicKey, call toString on it
-        result[key] = value.toString();
+        result[key] = v.toString();
       } else if (value !== null && typeof value === "object") {
+        const v = value as Object; // To avoid vercel build issue
         // Recursively convert properties
-        result[key] = convertPropertiesToString(value);
+        result[key] = convertPropertiesToString(v);
       } else {
         // Fallback to toString for other types
         throw new Error(`Unsupported type for property ${key}`);
