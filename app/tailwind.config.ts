@@ -50,8 +50,8 @@ const config: Config = {
       sm: "14px",
       base: "16px",
       "5xl": "24px",
-      lgi: "19px",
       xl: "20px",
+      lgi: "19px",
       inherit: "inherit",
     },
     screens: {

@@ -1,10 +1,17 @@
+import { Fragment } from "react";
 import ExplanationDialog from "./explanationDialog";
+import Dashboard from "./ponzuDashboard";
+import PonzuMessage from "./ponzuMessage";
 
 const Home = () => {
   return (
-    <div className="w-full relative bg-wheat overflow-hidden flex flex-col items-end justify-start pt-0 px-0 pb-[464px] box-border gap-[45px] leading-[normal] tracking-[normal] mq450:gap-[22px]">
+    <Fragment>
       <ExplanationDialog />
-    </div>
+      <div className="self-stretch flex flex-col justify-between grow">
+        <Dashboard />
+        <PonzuMessage />
+      </div>
+    </Fragment>
   );
 };
 

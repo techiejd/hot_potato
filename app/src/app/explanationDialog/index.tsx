@@ -5,14 +5,12 @@ import {
   Transition,
   TransitionChild,
 } from "@headlessui/react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useContext, useEffect, useState } from "react";
+import ExplanationDialogContext from "./context";
 
 const ExplanationDialog = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  useEffect(() => {
-    setIsOpen(true);
-  }, []);
-  const onClose = () => setIsOpen(false);
+  const { isOpen, setOpen } = useContext(ExplanationDialogContext);
+  const onClose = () => setOpen(false);
 
   return (
     <Transition show={isOpen}>
@@ -48,7 +46,7 @@ const ExplanationDialog = () => {
                     <span>{`>contribute to ponzu (min 0.5 SOL)`}</span>
                   </span>
                   <span className="block">
-                    <span>{`>ponzu starts in `}</span>
+                    <span>{`>ponzu distributions start in `}</span>
                     <b className="font-tahoma">23hrs 3m 2s</b>
                   </span>
                   <span className="block">

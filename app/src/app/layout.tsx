@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { WalletContext } from "./walletContext";
+import { WalletContextProvider } from "./walletContext";
 import Header from "./header";
+import { ExplanationDialogProvider } from "./explanationDialog/context";
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -17,10 +18,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <WalletContext>
-          <Header />
-          {children}
-        </WalletContext>
+        <WalletContextProvider>
+          <ExplanationDialogProvider>
+            <div className="w-full min-h-screen relative bg-wheat overflow-hidden flex flex-col items-end justify-start pt-0 px-0 box-border gap-[45px] leading-[normal] tracking-[normal] mq450:gap-[22px]">
+              <Header />
+              {children}
+            </div>
+          </ExplanationDialogProvider>
+        </WalletContextProvider>
       </body>
     </html>
   );
