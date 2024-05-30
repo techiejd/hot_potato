@@ -28,7 +28,7 @@ const Header = () => {
       </div>
       <div className="flex flex-col items-start justify-start pt-3 px-0 pb-0 text-xs">
         <div className="flex flex-row items-center gap-[9px]">
-          {["/telegram.svg", "/x.svg", "/reddit.svg"].map((src, i) => (
+          {["/telegram.svg", "/x.svg"].map((src, i) => (
             <Icon src={src} key={i} />
           ))}
           <ConnectWalletButton />
