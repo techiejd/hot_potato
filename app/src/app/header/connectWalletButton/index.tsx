@@ -1,16 +1,28 @@
 "use client";
 import dynamic from "next/dynamic";
-const WalletMultiButton = dynamic(
+const BaseWalletMultiButton = dynamic(
   () =>
-    import("@solana/wallet-adapter-react-ui").then(
-      (mod) => mod.WalletMultiButton
+    import("../../../wallet-adapter-react-ui").then(
+      (mod) => mod.BaseWalletMultiButton
     ),
   {
     loading: () => <p>Loading...</p>,
   }
 );
-import "./styles.css";
 
 export const ConnectWalletButton = () => {
-  return <WalletMultiButton className="wallet-adapter-button-main" />;
+  return (
+    <BaseWalletMultiButton
+      labels={{
+        "change-wallet": "Change wallet",
+        connecting: "Connecting ...",
+        "copy-address": "Copy address",
+        copied: "Copied",
+        disconnect: "Disconnect",
+        "has-wallet": "[Connect Wallet]",
+        "no-wallet": "[Connect Wallet]",
+      }}
+      endIcon={<p>^</p>}
+    />
+  );
 };
