@@ -1,5 +1,4 @@
 "use client";
-import { BaseWalletConnectButton } from "@solana/wallet-adapter-react-ui";
 import Image from "next/image";
 import { FC, PropsWithChildren, useState } from "react";
 
@@ -52,7 +51,7 @@ const ContributionInput = () => {
           <b className="relative font-bold inline-block min-w-[24px]">SOL</b>
         </div>
       </div>
-      <div className="flex flex-row items-center justify-start gap-[11px] max-w-full text-xs text-gray-700 mq500:flex-wrap">
+      <div className="flex flex-row items-center justify-start gap-[11px] max-w-full text-xs text-gray-700 flex-wrap">
         {[
           { reset: { contribution: "" } },
           { "0.5 SOL (min)": { contribution: "0.5" } },

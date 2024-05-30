@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { WalletContextProvider } from "./walletContext";
 import Header from "./header";
@@ -20,7 +19,7 @@ export default function RootLayout({
       <body>
         <WalletContextProvider>
           <ExplanationDialogProvider>
-            <div className="w-full min-h-screen relative bg-wheat overflow-hidden flex flex-col items-end justify-start pt-0 px-0 box-border gap-[45px] leading-[normal] tracking-[normal] mq450:gap-[22px]">
+            <div className="w-full min-h-screen relative bg-wheat overflow-hidden flex flex-col items-end justify-start pt-0 px-0 box-border gap-[48px] leading-[normal] tracking-[normal]">
               <Header />
               {children}
             </div>

@@ -27,7 +27,7 @@ const ExplanationDialog = () => {
           <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
         </TransitionChild>
         <div className="fixed inset-0 w-screen h-screen flex items-center justify-center">
-          <div className="flex-1 bg-gray-800 overflow-hidden flex flex-col items-center justify-center py-[281.5px] px-[75px] box-border max-w-full z-[1] text-sm text-maroon mq450:pl-5 mq450:pr-5 mq450:box-border">
+          <div className="overflow-hidden items-center justify-center z-[1] text-sm text-maroon">
             <TransitionChild
               as={Fragment}
               enter="ease-out duration-300"
@@ -41,6 +41,9 @@ const ExplanationDialog = () => {
                 <p className="m-0 self-stretch h-[204px] relative inline-block">
                   <span className="block">
                     <span>how it works</span>
+                  </span>
+                  <span className="block">
+                    <span>{`>don't miss out`}</span>
                   </span>
                   <span className="block">
                     <span>{`>contribute to ponzu (min 0.5 SOL)`}</span>

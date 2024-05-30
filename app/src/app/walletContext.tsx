@@ -6,11 +6,11 @@ import {
 } from "@solana/wallet-adapter-react";
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
 import { UnsafeBurnerWalletAdapter } from "@solana/wallet-adapter-wallets";
-import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import { WalletModalProvider } from "../wallet-adapter-react-ui";
 import { clusterApiUrl } from "@solana/web3.js";
 
-// Default styles that can be overridden by your app
-require("@solana/wallet-adapter-react-ui/styles.css");
+// Default styles that can be overridden by your app"
+import "../wallet-adapter-react-ui/styles.css";
 
 export const WalletContextProvider: FC<{ children: ReactNode }> = ({
   children,

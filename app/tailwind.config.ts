@@ -55,12 +55,7 @@ const config: Config = {
       inherit: "inherit",
     },
     screens: {
-      mq500: {
-        raw: "screen and (max-width: 500px)",
-      },
-      mq450: {
-        raw: "screen and (max-width: 450px)",
-      },
+      md: "768px",
     },
   },
   corePlugins: {

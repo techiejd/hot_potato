@@ -5,8 +5,8 @@ import ExplanationDialogContext from "../explanationDialog/context";
 const GameContextInfo = () => {
   const { setOpen } = useContext(ExplanationDialogContext);
   return (
-    <div className="flex-1 flex flex-row items-start justify-between max-w-full gap-[20px] mq450:flex-wrap">
-      <div className="relative shrink-0 [debug_commit:bf4bc93]">
+    <div className="flex-1 flex flex-row items-start justify-between max-w-full gap-[20px]">
+      <div className="relative shrink-0 [debug_commit:bf4bc93] text-maroon">
         <span>{`distributions start in `}</span>
         <b>23hrs 3m 2s</b>
       </div>
