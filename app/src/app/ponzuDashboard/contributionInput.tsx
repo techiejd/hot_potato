@@ -75,6 +75,7 @@ const ContributionInput = () => {
           return (
             <SetContributionButton
               onClick={() => setContribution(info.contribution)}
+              key={label}
             >
               {info.leadingImage && (
                 <div className="h-[11.8px] w-[11.8px] relative">
