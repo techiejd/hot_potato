@@ -59,7 +59,16 @@ const ContributionInput = () => {
           { "5 SOL": { contribution: 5 } },
           { "10 SOL": { contribution: 10 } },
           {
-            "50 SOL": { contribution: 50, leadingImage: "/sunglassesPepe.png" },
+            "50 SOL": { contribution: 50 },
+          },
+          {
+            "100 SOL": { contribution: 100 },
+          },
+          {
+            "500 SOL": {
+              contribution: 500,
+              leadingImage: "/sunglassesPepe.png",
+            },
           },
         ].map((contributionButtonInfo) => {
           const [label, info] = Object.entries(contributionButtonInfo)[0];
