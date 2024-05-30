@@ -16,7 +16,7 @@ const Header = () => {
             fill
             priority={true}
             alt=""
-            src="/ponzu.png"
+            src="/ponzu.jpeg"
             className="object-cover"
           />
         </div>
