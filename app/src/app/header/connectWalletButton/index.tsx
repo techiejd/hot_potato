@@ -22,7 +22,6 @@ export const ConnectWalletButton = () => {
         "has-wallet": "[Connect Wallet]",
         "no-wallet": "[Connect Wallet]",
       }}
-      endIcon={<p>^</p>}
     />
   );
 };

@@ -20,6 +20,14 @@ type Props = ButtonProps & {
   };
 };
 
+const ChevronDown = ({ className }: { className?: string }) => (
+  <img
+    src="/chevron-down.svg"
+    alt="chevron down"
+    className={`w-2.5 h-[5px] relative shrink-0 ${className || ""}`}
+  />
+);
+
 export function BaseWalletMultiButton({ children, labels, ...props }: Props) {
   const { setVisible: setModalVisible } = useWalletModal();
   const {
@@ -37,6 +45,7 @@ export function BaseWalletMultiButton({ children, labels, ...props }: Props) {
   const [copied, setCopied] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const ref = useRef<HTMLUListElement>(null);
+
   useEffect(() => {
     const listener = (event: MouseEvent | TouchEvent) => {
       const node = ref.current;
@@ -90,6 +99,19 @@ export function BaseWalletMultiButton({ children, labels, ...props }: Props) {
         }}
         walletIcon={walletIcon}
         walletName={walletName}
+        {...(buttonState === "connected"
+          ? {
+              endIcon: (
+                <ChevronDown
+                  className={
+                    menuOpen
+                      ? "wallet-adapter-button-trigger-end-icon-flipped"
+                      : undefined
+                  }
+                />
+              ),
+            }
+          : {})}
       >
         {content}
       </BaseWalletConnectionButton>
