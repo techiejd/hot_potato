@@ -1,4 +1,6 @@
 "use client";
+import { useWalletModal } from "@/wallet-adapter-react-ui";
+import { useWalletMultiButton } from "@solana/wallet-adapter-base-ui";
 import Image from "next/image";
 import { FC, PropsWithChildren, useState } from "react";
 
@@ -17,6 +19,33 @@ const SetContributionButton: FC<PropsWithChildren<{ onClick: () => void }>> = ({
 const Label: FC<PropsWithChildren> = ({ children }) => (
   <div className="relative text-xs font-tahoma inline-block">{children}</div>
 );
+
+const CtaButton: FC = () => {
+  const { setVisible } = useWalletModal();
+  const { buttonState } = useWalletMultiButton({
+    onSelectWallet() {
+      setVisible(true);
+    },
+  });
+  return buttonState === "connected" ? (
+    <button className="cursor-pointer [border:none] py-[13px] px-5 bg-tan-100 self-stretch flex flex-row items-center justify-center whitespace-nowrap hover:bg-tan-200">
+      <div className="relative text-base font-tahoma text-transparent !bg-clip-text [background:linear-gradient(90deg,_#370c0a,_#346f01)] [-webkit-background-clip:text] [-webkit-text-fill-color:transparent] text-left inline-block min-w-[67px]">
+        send SOL
+      </div>
+    </button>
+  ) : (
+    <button
+      className="cursor-pointer [border:none] py-[13px] px-5 bg-tan-100 self-stretch flex flex-row items-center justify-center whitespace-nowrap hover:bg-tan-200"
+      onClick={() => {
+        setVisible(true);
+      }}
+    >
+      <div className="relative text-base font-tahoma text-transparent !bg-clip-text [background:linear-gradient(90deg,_#370c0a,_#346f01)] [-webkit-background-clip:text] [-webkit-text-fill-color:transparent] text-left inline-block min-w-[114px]">
+        [connect wallet]
+      </div>
+    </button>
+  );
+};
 
 const ContributionInput = () => {
   const [contribution, setContribution] = useState("");
@@ -92,11 +121,7 @@ const ContributionInput = () => {
           );
         })}
       </div>
-      <button className="cursor-pointer [border:none] py-[13px] px-5 bg-tan-100 self-stretch flex flex-row items-center justify-center whitespace-nowrap hover:bg-tan-200">
-        <div className="relative text-base font-tahoma text-transparent !bg-clip-text [background:linear-gradient(90deg,_#370c0a,_#346f01)] [-webkit-background-clip:text] [-webkit-text-fill-color:transparent] text-left inline-block min-w-[114px]">
-          [connect wallet]
-        </div>
-      </button>
+      <CtaButton />
     </div>
   );
 };
