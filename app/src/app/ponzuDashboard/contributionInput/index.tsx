@@ -1,11 +1,11 @@
 "use client";
-import { FC, useCallback, useMemo, useState } from "react";
+import { FC, useCallback, useState } from "react";
 import * as anchor from "@coral-xyz/anchor";
-import { useConnection, useAnchorWallet } from "@solana/wallet-adapter-react";
+import { useConnection } from "@solana/wallet-adapter-react";
 import SuggestedInputs from "./suggestedInputs";
 import CtaButton from "./ctaButton";
-import { IDL, programId } from "../../../program";
 import InputBox from "./inputBox";
+import { useProgramContext } from "@/program/provider";
 
 const gameMasterAccountPublicKey = new anchor.web3.PublicKey(
   "6bvSxGiX8mSRjoC8N5YBKeNvg99wRFfBCqX2VadVb9U6"
@@ -40,23 +40,11 @@ const convertInputToLamports = (str: string) => {
 const ContributionInput: FC = () => {
   const [contribution, setContribution] = useState("");
   const { connection } = useConnection();
-  const wallet = useAnchorWallet();
+  const { program, provider } = useProgramContext();
+
   const [sendingSol, setSendingSol] = useState(false);
-  const provider = useMemo(() => {
-    if (!wallet) return;
-    const p = new anchor.AnchorProvider(connection, wallet, {});
-    anchor.setProvider(p);
-    return p;
-  }, [connection, wallet]);
-  const program = useMemo(() => {
-    if (!provider) return;
-    return new anchor.Program(IDL, programId, provider);
-  }, [provider]);
+
   const handleSendTransaction = useCallback(async () => {
-    if (!wallet) {
-      alert("Wallet not connected");
-      return;
-    }
     if (!provider) {
       alert("Provider not connected");
       return;
@@ -65,9 +53,9 @@ const ContributionInput: FC = () => {
       alert("Program not connected");
       return;
     }
+    setSendingSol(true);
 
     try {
-      setSendingSol(true);
       const lamports = convertInputToLamports(contribution);
 
       const anchorTransaction = await program.methods
@@ -85,7 +73,8 @@ const ContributionInput: FC = () => {
         .then((res) => res.blockhash);
       anchorTransaction.feePayer = provider.publicKey;
 
-      const signature = await provider.sendAndConfirm(anchorTransaction);
+      const signature = await provider.sendAndConfirm!(anchorTransaction);
+
       const status = await connection.getSignatureStatus(signature);
       console.log("Status:", status);
       setSendingSol(false);
@@ -96,7 +85,7 @@ const ContributionInput: FC = () => {
       );
       setSendingSol(false);
     }
-  }, [connection, wallet, provider, contribution, program]);
+  }, [connection, provider, contribution, program]);
   return (
     <form
       className="self-stretch flex flex-col items-start justify-center gap-[10px] max-w-full text-5xl text-rosybrown"
