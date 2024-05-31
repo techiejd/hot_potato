@@ -3,10 +3,7 @@ import * as admin from "firebase-admin";
 import { cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import * as anchor from "@coral-xyz/anchor";
-import { HotPotato, IDL } from "../../hot_potato";
-import { programPublicKey } from "../utils";
-
-type HotPotatoEvents = anchor.IdlEvents<HotPotato>;
+import { IDL, programId } from "../../program";
 
 function convertPropertiesToString<T extends object>(
   obj: T
@@ -78,7 +75,7 @@ export async function POST(request: Request, response: Response) {
   const transactions: anchor.web3.TransactionResponse[] = req;
   const firestore = getAdminFirestore();
   const eventParser = new anchor.EventParser(
-    programPublicKey,
+    programId,
     new anchor.BorshCoder(IDL)
   );
 
@@ -98,7 +95,7 @@ export async function POST(request: Request, response: Response) {
       batch.set(firestore.collection("events").doc(), {
         ...transaction,
         ...convertPropertiesToString(event.data),
-        name: event.name as keyof HotPotatoEvents,
+        name: event.name,
       });
     }
     if (!eventSeen) {
