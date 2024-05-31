@@ -70,3 +70,6 @@ node_modules/
 
 # firebase admin sdk keys
 *firebase-adminsdk*.json
+
+# vscode
+.vscode/
