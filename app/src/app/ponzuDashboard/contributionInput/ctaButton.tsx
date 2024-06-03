@@ -24,7 +24,11 @@ const CtaButton: FC<{ submitting: boolean }> = ({ submitting }) => {
       {submitting ? "sending..." : "send SOL"}
     </CtaButtonInternal>
   ) : (
-    <CtaButtonInternal disabled={connecting} onClick={() => setVisible(true)}>
+    <CtaButtonInternal
+      disabled={connecting}
+      type="button"
+      onClick={() => setVisible(true)}
+    >
       {connecting ? "connecting..." : "[connect wallet]"}
     </CtaButtonInternal>
   );
