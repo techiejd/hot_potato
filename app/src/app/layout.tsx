@@ -21,7 +21,7 @@ export default function RootLayout({
         <WalletContextProvider>
           <ProgramProvider>
             <ExplanationDialogProvider>
-              <div className="w-full min-h-screen relative bg-wheat overflow-hidden flex flex-col items-end justify-start pt-0 px-0 box-border gap-[48px] leading-[normal] tracking-[normal]">
+              <div className="w-full min-h-screen relative bg-wheat overflow-hidden flex flex-col items-end justify-start pt-0 px-0 box-border leading-[normal] tracking-[normal]">
                 <Header />
                 {children}
               </div>

@@ -23,6 +23,7 @@ const config: Config = {
           "900": "#8d7e68",
           "1600": "#1e1a1a",
           "1800": "#27120f",
+          "2100": "rgba(45, 33, 27, 0.65)",
         },
         whitesmoke: "#f5f5f5",
         darkgreen: "#346f01",
