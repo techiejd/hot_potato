@@ -8,7 +8,7 @@ const InputBox: FC<{
   return (
     <div className="self-stretch h-[32px] bg-tan-100 flex flex-row items-center justify-between py-2.5 px-3.5 gap-[20px]">
       <input
-        className="[outline:none] py-2.5 px-3.5 font-tahoma text-xl md:text-5xl text-rosybrown [border:none] w-full h-full [background:transparent] relative z-[3]"
+        className="[outline:none] py-2.5 px-3.5 font-tahoma text-xl md:text-5xl placeholder-rosybrown [border:none] w-full h-full [background:transparent]"
         placeholder="minimum of 0.5"
         type="number"
         required
@@ -21,7 +21,7 @@ const InputBox: FC<{
           setContribution(value);
         }}
       />
-      <div className="bg-cornsilk flex flex-row items-center justify-center py-1 px-[11px] gap-[6px] text-xs text-gray-100">
+      <div className="flex flex-row items-center justify-center py-1 px-[11px] gap-[6px] text-xs text-gray-100">
         <div className="h-6 w-6 rounded-51xl bg-gray-200 overflow-hidden shrink-0 flex flex-row items-center justify-center pt-[6.1px] px-1.5 pb-1.5 box-border">
           <img
             className="h-[11.9px] w-[10.7px] relative object-cover"

@@ -23,7 +23,10 @@ const Payments = () => {
                 </div>
               )}
               {!connected && (
-                <a className="font-bold" onClick={() => setVisible(true)}>
+                <a
+                  className={`font-bold ${connecting ? "" : "cursor-pointer"}`}
+                  onClick={() => setVisible(true)}
+                >
                   {connecting ? "connecting..." : "[connect wallet]"}
                 </a>
               )}
