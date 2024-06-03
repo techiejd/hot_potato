@@ -37,7 +37,7 @@ const ExplanationDialog = () => {
               leaveFrom="opacity-100 translate-y-0 sm:scale-100"
               leaveTo="opacity-0 translate-y-4 sm:scale-95"
             >
-              <DialogPanel className="self-stretch bg-cornsilk box-border overflow-hidden flex flex-col items-center justify-center py-5 px-[25px] gap-[16px] max-w-full max-h-full border-[1px] border-solid border-gray-400">
+              <DialogPanel className="self-stretch bg-cornsilk box-border overflow-hidden flex flex-col items-center justify-center py-5 px-[24px] gap-[16px] max-w-full max-h-full border-[1px] border-solid border-gray-400">
                 <p className="m-0 self-stretch h-[204px] relative inline-block">
                   <span className="block">
                     <span>how it works</span>
