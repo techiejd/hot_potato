@@ -1,9 +1,34 @@
 "use client";
-import { useContext } from "react";
+import { useContext, useEffect, useState } from "react";
 import ExplanationDialogContext from "../explanationDialog/context";
+import {
+  gameAccountPublicKey,
+  useProgramContext,
+  GameAccount,
+} from "@/program";
 
 const GameContextInfo = () => {
   const { setOpen } = useContext(ExplanationDialogContext);
+  const { program } = useProgramContext();
+  const [game, setGame] = useState<GameAccount | undefined>(undefined);
+  useEffect(() => {
+    const set = async () => {
+      if (shouldSet && program) {
+        const gameAccount =
+          await program.account.game.fetch(gameAccountPublicKey);
+        setGame(gameAccount);
+      }
+    };
+
+    let shouldSet = true;
+    if (!program) return;
+    set();
+    return () => {
+      shouldSet = false;
+    };
+  }, [program]);
+
+  console.log("game", game);
   return (
     <div className="flex-1 flex flex-row items-start justify-between max-w-full gap-[20px]">
       <div className="relative shrink-0 [debug_commit:bf4bc93] text-maroon">

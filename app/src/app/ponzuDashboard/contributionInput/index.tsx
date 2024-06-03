@@ -5,19 +5,11 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import SuggestedInputs from "./suggestedInputs";
 import CtaButton from "./ctaButton";
 import InputBox from "./inputBox";
-import { useProgramContext } from "@/program/provider";
-
-const gameMasterAccountPublicKey = new anchor.web3.PublicKey(
-  "6bvSxGiX8mSRjoC8N5YBKeNvg99wRFfBCqX2VadVb9U6"
-);
-
-const boardAccountPublicKey = new anchor.web3.PublicKey(
-  "9YZMzXL7WVBkPp6XUrwakX6WAgmdEYNFrSMjnMuzuQWK"
-);
-
-const gameAccountPublicKey = new anchor.web3.PublicKey(
-  "GnDkQ41MbRDB81XRcxVD3buD3smUySDkBJu25bd7rMvg"
-);
+import {
+  boardAccountPublicKey,
+  gameAccountPublicKey,
+  useProgramContext,
+} from "@/program";
 
 const convertInputToLamports = (str: string) => {
   // If there's a decimal, make sure only 9 digits are after it
