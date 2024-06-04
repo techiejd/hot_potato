@@ -752,11 +752,12 @@ describe("HotPotato", () => {
           expect(e)
             .to.have.property("player")
             .and.to.eql(firstPlayerAccountKp.publicKey);
-          const r = expect(e)
+          expect(e)
             .to.have.property("ticketEntryAmount")
             .and.to.be.a.bignumber.that.is.eq(
               new anchor.BN(amountWithoutChumpChange)
             );
+          expect(e).to.have.property("slot").and.to.eql(0);
         };
         const eventListenerSpy = chai.spy(expectOnEvent);
         const listener = program.addEventListener(
@@ -1199,6 +1200,7 @@ describe("HotPotato", () => {
           expect(e)
             .to.have.property("amount")
             .and.to.be.a.bignumber.that.is.eq(new anchor.BN(returnPerTurn));
+          expect(e).to.have.property("slot").and.to.eql(i);
           i++;
         };
         const eventListenerSpy = chai.spy(expectOnEvent);
@@ -1655,9 +1657,7 @@ describe("HotPotato", () => {
         } = await getTo101thCrankWithOnePlayer(); // 100 disbursements already
         let numTimesFirstPlayerDisbursed = 101;
         const expectOnEvent = (e: unknown) => {
-          console.log("AYO IS IT FAILING HERE?");
           expect(e).to.have.property("game").and.to.eql(gameAccountPublicKey);
-          console.log("NO");
           expect(e).to.have.property("player");
           expect(e)
             .to.have.property("amount")
@@ -1667,6 +1667,10 @@ describe("HotPotato", () => {
               .to.have.property("turn")
               .and.to.eql(numTimesFirstPlayerDisbursed);
             numTimesFirstPlayerDisbursed += 1;
+            expect(e).to.have.property("slot").and.to.eql(0);
+          } else {
+            // second player
+            expect(e).to.have.property("slot").and.to.eql(1);
           }
         };
         const eventListenerSpy = chai.spy(expectOnEvent);
@@ -1800,10 +1804,6 @@ describe("HotPotato", () => {
           counter++;
         }
       });
-    });
-    describe("Affiliate link", async () => {
-      it("saves affiliate");
-      it("it splits program fee with affiliate link");
     });
   });
   describe("Game master taking money out", async () => {

@@ -25,6 +25,7 @@ pub struct PotatoReceived {
     pub game: Pubkey,
     pub player: Pubkey,
     pub ticket_entry_amount: u64,
+    pub slot: u32
 }
 
 #[event]
@@ -33,6 +34,7 @@ pub struct PotatoHolderPaid {
     pub player: Pubkey,
     pub amount: u64,
     pub turn: u32,
+    pub slot: u32,
 }
 
 #[event]
@@ -104,15 +106,16 @@ impl Board {
     fn pop(&mut self) {
         self.head = (self.head + 1) % utils::NONUNIQUE_POTATO_HOLDERS_MAX;
     }
-    pub fn push(&mut self, potato_holding_information: PotatoHoldingInformation) -> Result<()> {
+    pub fn push(&mut self, potato_holding_information: PotatoHoldingInformation) -> Result<u32> {
         // This function adds a potato holding information to the end of the board in a round-robin fashion
         require_neq!(self.full, 1, HotPotatoError::BoardFull);
-        self.potato_holders[self.tail as usize] = potato_holding_information;
+        let slot = self.tail as usize;
+        self.potato_holders[slot] = potato_holding_information;
         self.tail = self.next_tail();
         if self.tail == self.head {
             self.full = 1;
         }
-        Ok(())
+        Ok(slot as u32)
     }
 
     pub fn crank(&mut self) -> Result<()> {
@@ -159,6 +162,7 @@ impl Board {
                 player: *acc.key,
                 amount: for_potato_holder,
                 turn: potato_holding_information.turn_number,
+                slot: idx as u32
             });
             total_paid += for_potato_holder + fee_paid;
             total_fee += fee_paid;
@@ -208,12 +212,12 @@ impl Game {
     ) -> Result<()>
     where
         F0: FnOnce() -> Result<()>,
-        F1: FnOnce(PotatoHoldingInformation) -> Result<()>,
+        F1: FnOnce(PotatoHoldingInformation) -> Result<u32>,
     {
         let give_player_hot_potato = || -> Result<()> {
             charge_ticket_entry()?;
             self.pot += ticket_entry;
-            push_potato_holding_information(PotatoHoldingInformation {
+            let slot = push_potato_holding_information(PotatoHoldingInformation {
                 player: *player,
                 turn_number: 0,
                 payment_pending: 0,
@@ -223,6 +227,7 @@ impl Game {
                 game: *for_game,
                 player: *player,
                 ticket_entry_amount: ticket_entry,
+                slot
             });
             Ok(())
         };
@@ -279,7 +284,7 @@ impl Game {
 
 // This is your program's public key and it will update
 // automatically when you build the project.
-declare_id!("ACGMUCw7Vz2k26UNN3x8u1YwbfqQgNQoCwy2RcKB7jGR");
+declare_id!("AFRiavJtBXMw9L6iERGB4BNZXiFnmS9osBw1C3hVVdds");
 
 #[program]
 mod hot_potato {
