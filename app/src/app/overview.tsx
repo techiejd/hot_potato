@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { FC } from "react";
 
 const DataRow = () => (
@@ -7,19 +8,17 @@ const DataRow = () => (
     <td>HvFd...5jqDK</td>
     <td className="flex">
       <a className="w-full h-full cursor-pointer">
-        <img
-          className="h-[12px] w-[12px] relative overflow-hidden shrink-0"
-          alt=""
-          src="/link-out.svg"
-        />
+        <div className="relative w-[12px] h-[12px] md:w-[18px] md:h-[18px]">
+          <Image alt="" src="/link-out.svg" fill />
+        </div>
       </a>
     </td>
   </tr>
 );
 
 const Overview: FC = () => (
-  <div className="bg-cornsilk box-border overflow-hidden flex flex-col items-start justify-start p-[24px] gap-[12px] text-3xs border-[1px] border-solid border-gray-400">
-    <div className="text-sm">overview</div>
+  <div className="bg-cornsilk box-border overflow-hidden flex flex-col items-start justify-start p-[24px] gap-[12px] text-3xs md:text-sm border-[1px] border-solid border-gray-400">
+    <div className="text-sm md:text-base">overview</div>
     <div className="w-full flex flex-col items-start justify-center gap-[2px] text-maroon">
       <div className="w-full flex flex-row items-start justify-between">
         <div>total contributions</div>
@@ -35,7 +34,7 @@ const Overview: FC = () => (
       </div>
     </div>
     <div className="flex flex-row items-center justify-start gap-[12px] text-4xs">
-      <h3 className="relative text-sm font-normal font-inherit inline-block">
+      <h3 className="relative text-sm md:text-base font-normal font-inherit inline-block">
         contributions
       </h3>
       <b>[refresh]</b>
