@@ -3,13 +3,13 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-hot_potato = "ACGMUCw7Vz2k26UNN3x8u1YwbfqQgNQoCwy2RcKB7jGR"
+hot_potato = "AFRiavJtBXMw9L6iERGB4BNZXiFnmS9osBw1C3hVVdds"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
