@@ -23,9 +23,10 @@ const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
     console.log("Game initialized event:", event);
     program.removeEventListener(listener);
   });
-  /**
-  const gameMasterAccountKp = loadKeypair("gameMasterSK_1716534014762.json");
-  const boardAccountKp = loadKeypair("boardAccountSK_1716534016713.json");
+
+  /*
+  const gameMasterAccountKp = loadKeypair("gameMasterSK_1717574208100.json");
+  const boardAccountKp = loadKeypair("boardAccountSK_1717574211814.json");
   console.log(
     "Game master account public key:",
     gameMasterAccountKp.publicKey.toString()
@@ -33,6 +34,7 @@ const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
   console.log("Board account public key:", boardAccountKp.publicKey.toString());
   */
 
+  /***/
   const gameMasterAccountKp = web3.Keypair.generate();
   await printBalance(program, gameMasterAccountKp.publicKey);
   console.log("Airdropping to the game master...");

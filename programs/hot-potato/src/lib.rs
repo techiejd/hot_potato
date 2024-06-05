@@ -7,6 +7,8 @@ use std::{ops::Add, vec::Vec};
 use anchor_lang::error_code;
 use std::result::Result::Ok;
 
+declare_id!("FTmU5btw8kipZEcacr1cf5kd7Ld9qnaBmQjxbyYd76yo");
+
 #[event]
 pub struct GameInitialized {
     pub game_master: Pubkey,
@@ -96,7 +98,7 @@ pub struct Board {
     head: u64,                                          // 8 bytes
     tail: u64,                                          // 8 bytes
     pub owning_game_key: Pubkey,                        // 32 bytes
-    potato_holders: [PotatoHoldingInformation; 10_000], // 480_000 bytes. There's a parsing bug which is why we don't use constants::NONUNIQUE_POTATO_HOLDERS_MAX
+    potato_holders: [PotatoHoldingInformation; 10_000], // 48_000 bytes. There's a parsing bug which is why we don't use constants::NONUNIQUE_POTATO_HOLDERS_MAX
 }
 
 impl Board {
@@ -281,10 +283,6 @@ impl Game {
         Ok(())
     }
 }
-
-// This is your program's public key and it will update
-// automatically when you build the project.
-declare_id!("AFRiavJtBXMw9L6iERGB4BNZXiFnmS9osBw1C3hVVdds");
 
 #[program]
 mod hot_potato {
