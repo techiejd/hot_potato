@@ -8,6 +8,7 @@ const SetContributionButton: FC<PropsWithChildren<{ onClick: () => void }>> = ({
   <button
     className="cursor-pointer [border:none] py-1.5 px-2.5 bg-tan-100 overflow-hidden flex flex-row items-center justify-center hover:bg-tan-200 gap-[6px]"
     onClick={onClick}
+    type="button"
   >
     {children}
   </button>
