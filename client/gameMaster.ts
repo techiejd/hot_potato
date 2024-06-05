@@ -17,6 +17,8 @@ anchor.setProvider(anchor.AnchorProvider.env());
 
 const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
 
+const fiveMinutes = new anchor.BN(300);
+
 // Call anonymous function
 (async () => {
   const listener = program.addEventListener("GameInitialized", (event) => {
@@ -69,7 +71,12 @@ const program = anchor.workspace.HotPotato as anchor.Program<HotPotato>;
   // Initialize the game
   console.log("Initializing the game...");
   const txHash = await program.methods
-    .initialize(oneDay, oneHour, new anchor.BN(web3.LAMPORTS_PER_SOL / 2), 35)
+    .initialize(
+      fiveMinutes,
+      fiveMinutes,
+      new anchor.BN(web3.LAMPORTS_PER_SOL / 2),
+      35
+    )
     .accounts({
       newGame: gameAccountPublicKey,
       newBoard: boardAccountKp.publicKey,

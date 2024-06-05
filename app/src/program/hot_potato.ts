@@ -342,6 +342,11 @@ export type HotPotato = {
           "name": "ticketEntryAmount",
           "type": "u64",
           "index": false
+        },
+        {
+          "name": "slot",
+          "type": "u32",
+          "index": false
         }
       ]
     },
@@ -365,6 +370,11 @@ export type HotPotato = {
         },
         {
           "name": "turn",
+          "type": "u32",
+          "index": false
+        },
+        {
+          "name": "slot",
           "type": "u32",
           "index": false
         }
@@ -794,6 +804,11 @@ export const IDL: HotPotato = {
           "name": "ticketEntryAmount",
           "type": "u64",
           "index": false
+        },
+        {
+          "name": "slot",
+          "type": "u32",
+          "index": false
         }
       ]
     },
@@ -817,6 +832,11 @@ export const IDL: HotPotato = {
         },
         {
           "name": "turn",
+          "type": "u32",
+          "index": false
+        },
+        {
+          "name": "slot",
           "type": "u32",
           "index": false
         }

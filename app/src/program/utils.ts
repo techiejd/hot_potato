@@ -6,15 +6,15 @@ export const programId = new anchor.web3.PublicKey(
 );
 
 export const gameMasterAccountPublicKey = new anchor.web3.PublicKey(
-  "7hsJpUoDwpLNjPnwB9YmHDZFBjotoVvRNaRb7wmYo16n"
+  "4dZPbk2b9HmuQfCiq6iJxFmUCUfRHRzFp27bxg2geJAb"
 );
 
 export const boardAccountPublicKey = new anchor.web3.PublicKey(
-  "8DwTgBzL18WCpkoUBoDtAixKVdibExSnqoyMPjXsuSpV"
+  "8DwM4uLUu3xVe6KGgxovnethn38JSu7WLSboZJMvNYSt"
 );
 
 export const gameAccountPublicKey = new anchor.web3.PublicKey(
-  "DokYcTnFGUnDTXAh5pYKBVxwnxDeckVDV2NsAKPN8rbk"
+  "7KZ4TkgoLQqkUbXnpM8madERea2JU5UMcsVe8vtajiaT"
 );
 
 export type GameAccount = anchor.IdlAccounts<HotPotato>["game"];
