@@ -5,3 +5,6 @@ target
 node_modules
 test-ledger
 .yarn
+
+# Ignore firebase emulators_export
+emulators_export/
