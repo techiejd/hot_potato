@@ -50,6 +50,7 @@ interface ProgramContextState {
   cached: {
     contributions: DocumentData[];
   };
+  formatTxLink: (tx: string) => string;
 }
 
 const ProgramContext = createContext<ProgramContextState>({
@@ -57,6 +58,7 @@ const ProgramContext = createContext<ProgramContextState>({
   program: undefined,
   cached: { contributions: [] },
   isDevNet: isDevEnvironment,
+  formatTxLink: (tx: string) => "",
 });
 
 // Create a provider component
@@ -85,6 +87,9 @@ export const ProgramProvider: FC<PropsWithChildren> = ({ children }) => {
     return new anchor.Program(IDL, programId, provider);
   }, [provider]);
 
+  const formatTxLink = (tx: string) =>
+    `https://explorer.solana.com/tx/${tx + (isDevEnvironment ? "?cluster=devnet" : "")}`;
+
   return (
     <ProgramContext.Provider
       value={{
@@ -92,6 +97,7 @@ export const ProgramProvider: FC<PropsWithChildren> = ({ children }) => {
         program,
         cached: { contributions: contributions! },
         isDevNet: isDevEnvironment,
+        formatTxLink,
       }}
     >
       {children}

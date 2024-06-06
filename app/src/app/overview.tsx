@@ -19,28 +19,21 @@ const DataRow: FC<{ contribution: DocumentData; now: RelativeTime }> = ({
   })(contribution.ticketEntryAmount as string);
   const playerAddy =
     contribution.player.slice(0, 4) + "..." + contribution.player.slice(-4);
-  const isDevNet = useProgramContext().isDevNet;
-  console.log({
-    tx: contribution.transaction.signatures[0],
-    isDevNet,
-    combo:
-      contribution.transaction.signatures[0] +
-      (isDevNet ? "?cluster=devnet" : ""),
-    txLink: `https://explorer.solana.com/tx/${contribution.transaction.signatures[0] + isDevNet ? "?cluster=devnet" : ""}`,
-  });
-  const txLink = `https://explorer.solana.com/tx/${contribution.transaction.signatures[0] + (isDevNet ? "?cluster=devnet" : "")}`;
+  const txLink = useProgramContext().formatTxLink(
+    contribution.transaction.signatures[0]
+  );
   return (
     <tr>
       <td>{when}</td>
       <td>{amount}</td>
       <td>{playerAddy}</td>
-      <td className="flex">
+      <td>
         <a
           className="w-full h-full cursor-pointer"
           href={txLink}
           target="_blank"
         >
-          <div className="relative w-[12px] h-[12px] md:w-[18px] md:h-[18px]">
+          <div className="relative w-[12px] h-[12px] md:w-[21px] md:h-[21px]">
             <Image alt="" src="/link-out.svg" fill />
           </div>
         </a>
@@ -74,7 +67,7 @@ const Overview: FC = () => {
         <h3 className="relative text-sm md:text-base font-normal font-inherit inline-block">
           contributions
         </h3>
-        <b>[see all]</b>
+        <b className="cursor-pointer">[see all]</b>
       </div>
       <table className="w-full text-maroon text-left">
         <thead>
@@ -96,7 +89,7 @@ const Overview: FC = () => {
             ))}
           {contributions.length === 0 && (
             <tr>
-              <td>Loading...</td>
+              <td>loading...</td>
             </tr>
           )}
         </tbody>
