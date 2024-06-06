@@ -6,7 +6,7 @@ const BaseWalletMultiButton = dynamic(
       (mod) => mod.BaseWalletMultiButton
     ),
   {
-    loading: () => <p>Loading...</p>,
+    loading: () => <p>loading...</p>,
   }
 );
 
@@ -19,8 +19,8 @@ export const ConnectWalletButton = () => {
         "copy-address": "Copy address",
         copied: "Copied",
         disconnect: "Disconnect",
-        "has-wallet": "[Connect Wallet]",
-        "no-wallet": "[Connect Wallet]",
+        "has-wallet": "[connect wallet]",
+        "no-wallet": "[connect wallet]",
       }}
     />
   );
