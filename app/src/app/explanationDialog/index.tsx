@@ -43,7 +43,13 @@ const ExplanationDialog = () => {
                     <span>how it works</span>
                   </span>
                   <span className="block">
-                    <span>{`>don't miss out`}</span>
+                    <span>{`>this game has been sunlighted due to legal concerns`}</span>
+                  </span>
+                  <span className="block">
+                    <a
+                      className="underline"
+                      href="https://github.com/techiejd/hot_potato"
+                    >{`>checkout the codebase`}</a>
                   </span>
                   <span className="block">
                     <span>{`>contribute to ponzu (min 0.5 SOL)`}</span>
@@ -56,25 +62,10 @@ const ExplanationDialog = () => {
                     <span>{`>ponzu sen uw ~1% 150 times/hour`}</span>
                   </span>
                   <span className="block">
-                    <span>{`>shill shill shill`}</span>
-                  </span>
-                  <span className="block">
                     <span>{`>profit. (~50% SOL gain)`}</span>
                   </span>
                   <span className="block">
-                    <span>&nbsp;</span>
-                  </span>
-                  <span className="block">
-                    <span>disclaimer</span>
-                  </span>
-                  <span className="block">
-                    <span>{`>this is not investment`}</span>
-                  </span>
-                  <span className="block">
                     <span>{`>sol ponzu takes 3.5% fee`}</span>
-                  </span>
-                  <span className="block">
-                    <span>{`>this is dumb game for lulz`}</span>
                   </span>
                 </p>
                 <button
